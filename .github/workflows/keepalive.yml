@@ -1,0 +1,13 @@
+name: keepalive
+# Пингует сервис, чтобы бесплатный инстанс Render не засыпал.
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # каждые ~10 минут
+  workflow_dispatch:          # можно запустить вручную
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ping health
+        run: curl -fsS --max-time 40 https://freely-cbzn.onrender.com/api/health || true

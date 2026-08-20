@@ -324,17 +324,33 @@ function closeSheet() {
 $("#sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
 
 /* ---------- FAVORITES ---------- */
+// Избранное вынесено из нижнего меню — открывается кнопкой-сердечком в шапке
+function showFavorites() {
+  document.querySelectorAll("#bottomNav button").forEach((b) => b.classList.remove("active"));
+  state.tab = "favorites";
+  view().scrollTop = 0;
+  renderFavorites().catch((e) => {
+    view().innerHTML = `<div class="empty"><div class="em">⚠️</div><p>${esc(e.message)}</p></div>`;
+  });
+}
+
 async function renderFavorites() {
   const v = view();
   $("#searchWrap").classList.add("hidden");
   v.innerHTML = `<div class="loader">Загрузка…</div>`;
   const favs = await api("/favorites");
+  const head = `<div class="menu-head">
+      <button class="menu-back" id="favBack">←</button>
+      <div><h2>❤️ Избранное</h2><div class="mh-count">${favs.length} блюд</div></div>
+    </div>`;
   if (!favs.length) {
-    v.innerHTML = `<div class="empty"><div class="em">❤️</div><p>Пока нет избранного.<br>Открой блюдо и нажми 🤍</p></div>`;
-    return;
+    v.innerHTML = head + `<div class="empty"><div class="em">🤍</div><p>Пока нет избранного.<br>Открой блюдо и нажми 🤍 на фото.</p></div>`;
+  } else {
+    v.innerHTML = head + `<div class="grid">${favs.map(cardHTML).join("")}</div>`;
+    bindCards(v);
   }
-  v.innerHTML = `<div class="section-title">❤️ Избранное</div><div class="grid">${favs.map(cardHTML).join("")}</div>`;
-  bindCards(v);
+  const back = document.getElementById("favBack");
+  if (back) back.addEventListener("click", () => switchTab("menu"));
 }
 
 /* ---------- CART ---------- */
@@ -655,6 +671,7 @@ $("#search").addEventListener("input", (e) => {
   searchTimer = setTimeout(() => { if (state.tab === "menu") renderMenu(); }, 300);
 });
 $("#dice").addEventListener("click", randomDish);
+$("#favBtnTop").addEventListener("click", showFavorites);
 document.querySelectorAll("#bottomNav button").forEach((b) =>
   b.addEventListener("click", () => switchTab(b.dataset.tab)));
 

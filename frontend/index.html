@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Freely</title>
-  <link rel="stylesheet" href="/static/styles.css?v=4" />
+  <link rel="stylesheet" href="/static/styles.css?v=5" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -16,7 +16,10 @@
           <div class="hello" id="hello">Freely 🌿</div>
           <div class="subtitle" id="brandsub">Без глютена · контроль сахара · для будущих мам</div>
         </div>
-        <button class="dice" id="dice" title="Что сегодня поесть?">🎲</button>
+        <div class="topbar-actions">
+          <button class="dice ghost" id="favBtnTop" title="Избранное">❤️</button>
+          <button class="dice" id="dice" title="Что сегодня поесть?">🎲</button>
+        </div>
       </div>
       <div class="search-wrap" id="searchWrap">
         <input id="search" type="search" placeholder="🔎 Поиск: курица, суп, десерт…" autocomplete="off" />
@@ -27,7 +30,6 @@
 
     <nav class="bottom-nav" id="bottomNav">
       <button data-tab="menu" class="active"><span>🍽</span>Меню</button>
-      <button data-tab="favorites"><span>❤️</span>Избранное</button>
       <button data-tab="cart"><span class="cart-icon">🛒<b id="cartBadge" class="badge hidden">0</b></span>Корзина</button>
       <button data-tab="orders"><span>📦</span>Заказы</button>
       <button data-tab="profile"><span>⚙️</span>Профиль</button>
@@ -37,6 +39,6 @@
   <div id="sheet" class="sheet hidden"><div class="sheet-inner" id="sheetInner"></div></div>
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/static/app.js?v=4"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>
