@@ -1,0 +1,23 @@
+# секреты — НЕ коммитим
+.env
+
+# окружение и кэши
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# база и логи (создаются на месте)
+eatme.db
+eatme.db-journal
+logs/
+gen_images.log
+*.log
+
+# бинарь cloudflared качается под платформу отдельно (51 МБ, не в репо)
+tools/
+
+# прочее
+scratchpad/
+.DS_Store
+Thumbs.db

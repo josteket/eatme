@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>EAT ME — семейное меню</title>
+  <link rel="stylesheet" href="/static/styles.css?v=4" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"></div>
+  <div id="app">
+    <header class="topbar">
+      <div class="topbar-row">
+        <div>
+          <div class="hello" id="hello">Привет! 👋</div>
+          <div class="subtitle">Без глютена · контроль углеводов</div>
+        </div>
+        <button class="dice" id="dice" title="Что сегодня поесть?">🎲</button>
+      </div>
+      <div class="search-wrap" id="searchWrap">
+        <input id="search" type="search" placeholder="🔎 Поиск: курица, суп, десерт…" autocomplete="off" />
+      </div>
+    </header>
+
+    <main id="view"><div class="loader">Загрузка…</div></main>
+
+    <nav class="bottom-nav" id="bottomNav">
+      <button data-tab="menu" class="active"><span>🍽</span>Меню</button>
+      <button data-tab="favorites"><span>❤️</span>Избранное</button>
+      <button data-tab="cart"><span class="cart-icon">🛒<b id="cartBadge" class="badge hidden">0</b></span>Корзина</button>
+      <button data-tab="orders"><span>📦</span>Заказы</button>
+      <button data-tab="profile"><span>⚙️</span>Профиль</button>
+    </nav>
+  </div>
+
+  <div id="sheet" class="sheet hidden"><div class="sheet-inner" id="sheetInner"></div></div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/static/app.js?v=4"></script>
+</body>
+</html>
