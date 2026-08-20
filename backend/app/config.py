@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./eatme.db"
     DEV_MODE: bool = True
 
+    # ==== Облако (Render и т.п.) ====
+    # true → бот работает через webhook, без туннеля и polling.
+    USE_WEBHOOK: bool = False
+    # Постоянный публичный адрес сервиса. Render подставляет RENDER_EXTERNAL_URL сам.
+    PUBLIC_URL: str = ""
+    RENDER_EXTERNAL_URL: str = ""
+
     @property
     def allowed_ids(self) -> list[int]:
         out: list[int] = []
@@ -77,6 +84,21 @@ class Settings(BaseSettings):
     def token_ok(self) -> bool:
         t = self.BOT_TOKEN.strip()
         return bool(t) and "PUT_YOUR_TOKEN" not in t
+
+    @property
+    def public_base_url(self) -> str:
+        return (self.PUBLIC_URL or self.RENDER_EXTERNAL_URL or "").rstrip("/")
+
+    @property
+    def use_webhook(self) -> bool:
+        return self.USE_WEBHOOK and self.token_ok and bool(self.public_base_url)
+
+    @property
+    def webhook_secret(self) -> str:
+        import hashlib
+
+        raw = ("eatme-wh" + self.SECRET_KEY + self.BOT_TOKEN).encode()
+        return hashlib.sha256(raw).hexdigest()[:40]
 
 
 settings = Settings()

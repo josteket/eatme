@@ -13,10 +13,16 @@ url = settings.DATABASE_URL
 if url.startswith("sqlite:///./"):
     db_path = PROJECT_ROOT / url.replace("sqlite:///./", "")
     url = f"sqlite:///{db_path}"
+# Render/Heroku дают DATABASE_URL как postgres:// — SQLAlchemy ждёт postgresql://
+if url.startswith("postgres://"):
+    url = url.replace("postgres://", "postgresql://", 1)
+
+IS_SQLITE = url.startswith("sqlite")
 
 engine = create_engine(
     url,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False} if IS_SQLITE else {},
+    pool_pre_ping=not IS_SQLITE,
     echo=False,
 )
 
@@ -70,5 +76,28 @@ def init_db() -> None:
     from . import models  # noqa: F401  (регистрация моделей)
 
     Base.metadata.create_all(bind=engine)
-    _ensure_columns()
-    _migrate_statuses()
+    if IS_SQLITE:
+        # лёгкие миграции для уже существующих SQLite-баз
+        _ensure_columns()
+        _migrate_statuses()
+
+
+def seed_if_empty() -> None:
+    """Наполнить базу блюдами, если она пустая (нужно в облаке при первом старте)."""
+    import logging
+
+    from .models import Recipe
+
+    log = logging.getLogger("eatme.db")
+    db = SessionLocal()
+    try:
+        count = db.query(Recipe).count()
+    finally:
+        db.close()
+    if count == 0:
+        log.info("База пустая — наполняю блюдами…")
+        from .seed.seed import run as seed_run
+
+        seed_run()
+    else:
+        log.info("В базе %d блюд — сид не нужен.", count)

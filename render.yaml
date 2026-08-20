@@ -1,0 +1,27 @@
+# Render Blueprint — деплой EAT ME в один клик.
+# На render.com: New → Blueprint → выбрать этот репозиторий.
+services:
+  - type: web
+    name: eatme
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: USE_WEBHOOK
+        value: "true"
+      - key: DEV_MODE
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      # Секреты вписываются в дашборде Render (sync:false — не хранятся в git):
+      - key: BOT_TOKEN
+        sync: false
+      - key: ALLOWED_TELEGRAM_IDS
+        sync: false
+      - key: WIFE_TELEGRAM_ID
+        sync: false
