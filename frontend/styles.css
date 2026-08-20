@@ -210,6 +210,18 @@ main { padding: 6px 18px 96px; }
 .b-carb-low { background: var(--accent-soft); color: var(--accent); }
 .b-carb-mod { background: var(--warn-soft); color: var(--warn); }
 .b-carb-high { background: var(--danger-soft); color: var(--danger); }
+.b-like { background: var(--terra-soft); color: var(--terra); }
+
+/* кнопка «Нравится» (глобальный лайк) */
+.like-btn {
+  display: inline-flex; align-items: center; gap: 6px; margin: 14px 0 2px;
+  padding: 9px 16px; border-radius: 999px; border: 1.5px solid var(--line-2);
+  background: var(--card); font-size: 14px; font-weight: 650; cursor: pointer;
+  color: var(--ink); transition: transform .12s ease, background .15s ease, border-color .15s ease, color .15s ease;
+}
+.like-btn.liked { background: var(--terra-soft); border-color: var(--terra); color: var(--terra); }
+.like-btn:active { transform: scale(.95); }
+.like-btn .lk-emoji { font-size: 16px; }
 
 /* horizontal scroll row */
 .h-scroll { display: flex; gap: 13px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; margin: 0 -2px; }

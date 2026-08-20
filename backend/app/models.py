@@ -117,6 +117,16 @@ class Favorite(Base):
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))
 
 
+class Like(Base):
+    """Глобальный лайк блюда (общий на всех пользователей → популярность)."""
+    __tablename__ = "likes"
+    __table_args__ = (UniqueConstraint("user_id", "recipe_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))
+
+
 class CartItem(Base):
     __tablename__ = "cart_items"
     __table_args__ = (UniqueConstraint("user_id", "recipe_id"),)

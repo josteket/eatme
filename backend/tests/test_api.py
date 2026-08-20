@@ -146,6 +146,23 @@ def test_new_order_status_is_buy(client):
     assert "Купить" in order["status_label"]
 
 
+def test_likes_toggle_and_popular(client):
+    recipes = client.get("/api/recipes").json()
+    rid = recipes[0]["id"]
+
+    r = client.post(f"/api/likes/{rid}").json()
+    assert r["liked"] is True and r["likes"] == 1
+
+    pop = client.get("/api/popular").json()
+    assert any(p["id"] == rid for p in pop)
+
+    lst = client.get("/api/recipes").json()
+    assert next(x for x in lst if x["id"] == rid)["likes"] == 1
+
+    r2 = client.post(f"/api/likes/{rid}").json()
+    assert r2["liked"] is False and r2["likes"] == 0
+
+
 def test_stats_reflects_orders(client):
     recipes = client.get("/api/recipes").json()
     client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 2})

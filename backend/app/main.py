@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import PROJECT_ROOT, settings
 from .database import init_db, seed_if_empty
-from .api import cart, favorites, misc, orders, recipes
+from .api import cart, favorites, likes, misc, orders, recipes
 
 log = logging.getLogger("eatme.web")
 
@@ -66,6 +66,7 @@ app.include_router(recipes.router, prefix="/api", tags=["recipes"])
 app.include_router(cart.router, prefix="/api", tags=["cart"])
 app.include_router(orders.router, prefix="/api", tags=["orders"])
 app.include_router(favorites.router, prefix="/api", tags=["favorites"])
+app.include_router(likes.router, prefix="/api", tags=["likes"])
 app.include_router(misc.router, prefix="/api", tags=["misc"])
 
 

@@ -124,6 +124,7 @@ function cardHTML(r) {
       <div class="card-badges">
         <span class="badge-pill b-gf">GF</span>
         <span class="badge-pill ${carbClass(r.carb_load)}">${r.per_serving.carbs} г угл</span>
+        ${r.likes ? `<span class="badge-pill b-like">👍 ${r.likes}</span>` : ""}
       </div>
     </div>
   </div>`;
@@ -145,10 +146,11 @@ async function renderMenu() {
 async function renderCategoryTiles() {
   const v = view();
   v.innerHTML = `<div class="loader">Загрузка…</div>`;
-  const [cats, quick, fast] = await Promise.all([
+  const [cats, quick, fast, popular] = await Promise.all([
     getCategories(),
     api("/recipes?quick=true"),
     api("/recipes?category=FASTFOOD"),
+    api("/popular").catch(() => []),
   ]);
 
   const tiles = cats.map((c) => {
@@ -166,6 +168,10 @@ async function renderCategoryTiles() {
   let html = `<div class="section-title"><span class="st-accent">Категории</span></div>
     <div class="cat-grid">${tiles}</div>`;
 
+  if (popular.length) {
+    html += `<div class="section-title">🔥 Популярное</div>
+      <div class="h-scroll" id="rowPopular">${popular.map(cardHTML).join("")}</div>`;
+  }
   if (quick.length) {
     html += `<div class="section-title">⚡ За 20 минут</div>
       <div class="h-scroll" id="rowQuick">${quick.slice(0, 10).map(cardHTML).join("")}</div>`;
@@ -251,6 +257,9 @@ async function openDish(id) {
         <div class="detail-name">${esc(r.name)}</div>
         ${r.cuisine ? `<div class="cuisine-chip">${esc(r.cuisine)} кухня</div>` : ""}
         <div class="detail-desc">${esc(r.description)}</div>
+        <button class="like-btn ${r.is_liked ? "liked" : ""}" id="likeBtn">
+          <span class="lk-emoji">👍</span> Нравится · <span id="likeCount">${r.likes || 0}</span>
+        </button>
 
         <div class="nutri">
           <div><b>${n.kcal}</b><span>ккал</span></div>
@@ -290,6 +299,15 @@ async function openDish(id) {
       r.is_favorite = res.is_favorite;
       $("#favBtn").textContent = res.is_favorite ? "❤️" : "🤍";
       haptic();
+    });
+    $("#likeBtn").addEventListener("click", async () => {
+      const res = await api(`/likes/${r.id}`, { method: "POST" });
+      r.is_liked = res.liked;
+      r.likes = res.likes;
+      const btn = $("#likeBtn");
+      btn.classList.toggle("liked", res.liked);
+      $("#likeCount").textContent = res.likes;
+      haptic("medium");
     });
     $("#servMinus").addEventListener("click", () => changeServ(-1));
     $("#servPlus").addEventListener("click", () => changeServ(1));

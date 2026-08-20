@@ -75,6 +75,12 @@ def list_recipes(
     result = [recipe_brief(r) for r in recipes]
     if quick:
         result = [r for r in result if r["total_time"] <= 20]
+    # добавляем счётчики лайков
+    from .likes import likes_counts
+
+    counts = likes_counts(db, [r["id"] for r in result])
+    for r in result:
+        r["likes"] = counts.get(r["id"], 0)
     return result
 
 
@@ -95,6 +101,14 @@ def get_recipe(
         )
     )
     data["is_favorite"] = fav is not None
+    from ..models import Like
+
+    data["likes"] = db.scalar(
+        select(func.count(Like.id)).where(Like.recipe_id == recipe_id)
+    ) or 0
+    data["is_liked"] = db.scalar(
+        select(Like).where(Like.user_id == user.id, Like.recipe_id == recipe_id)
+    ) is not None
     return data
 
 
