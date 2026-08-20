@@ -19,7 +19,7 @@ log = logging.getLogger("eatme.web")
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 WEBHOOK_PATH = "/tg/webhook"
 
-app = FastAPI(title="EAT ME — семейное меню", version="1.0.0")
+app = FastAPI(title="Freely — питание без глютена и с контролем сахара", version="1.0.0")
 
 # бот и диспетчер в webhook-режиме (заполняются на старте)
 _bot = None
@@ -84,7 +84,7 @@ async def _startup() -> None:
         settings.WEBAPP_URL = settings.public_base_url
 
     log.info("=" * 64)
-    log.info("EAT ME — старт веб-сервера")
+    log.info("Freely — старт веб-сервера")
     log.info("  Режим          : %s", "WEBHOOK (облако)" if settings.use_webhook else "локальный")
     log.info("  Адрес          : %s", settings.WEBAPP_URL)
     log.info("  Mini App URL   : %s",

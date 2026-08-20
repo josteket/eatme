@@ -1,4 +1,4 @@
-/* EAT ME — Telegram Mini App (vanilla JS) */
+/* Freely — Telegram Mini App (vanilla JS) */
 "use strict";
 
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -606,8 +606,8 @@ async function renderProfile() {
     </div>
     ${stats ? statsHTML(stats) : ""}
     <div class="profile-card">
-      <h3>ℹ️ О проекте</h3>
-      <div class="r-sub" style="line-height:1.5">Семейное меню на двоих. Все блюда — без глютена и с учётом углеводной нагрузки при ГСД. Выбирай блюда, собирай план, получай список покупок.</div>
+      <h3>ℹ️ О Freely</h3>
+      <div class="r-sub" style="line-height:1.5"><b>Freely 🌿</b> — вкусное питание без глютена и с контролем сахара: для будущих мам (ГСД), для целиакии и для всех, кто хочет питаться правильно. Выбирай блюда, собирай план, получай список покупок.</div>
     </div>
     <div class="disclaimer">${esc(disc.text)}</div>`;
 }
@@ -661,10 +661,9 @@ document.querySelectorAll("#bottomNav button").forEach((b) =>
 (async function boot() {
   try {
     state.me = await api("/me");
-    $("#hello").textContent = `Привет, ${state.me.first_name || "друг"}! 👋`;
-  } catch (e) {
-    $("#hello").textContent = "Привет! 👋";
-  }
+    const sub = document.getElementById("brandsub");
+    if (sub) sub.textContent = `Привет, ${state.me.first_name || "друг"}! 👋 · без глютена, контроль сахара`;
+  } catch (e) {}
   state._images = await api("/images").catch(() => ({}));
   await refreshCartCount();
   switchTab("menu");

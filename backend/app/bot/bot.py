@@ -90,7 +90,7 @@ def build_bot() -> tuple[Bot, Dispatcher]:
     async def _send_menu(message: Message, greeting: str) -> None:
         """Прислать кнопку меню, либо объяснение, если URL не публичный."""
         if settings.is_webapp_public:
-            await message.answer(greeting, reply_markup=_webapp_kb())
+            await message.answer(greeting, reply_markup=_webapp_kb(), parse_mode="HTML")
         else:
             log.warning(
                 "Кнопка Mini App не отправлена: WEBAPP_URL=%s не публичный HTTPS",
@@ -123,7 +123,7 @@ def build_bot() -> tuple[Bot, Dispatcher]:
         await _send_menu(
             message,
             f"👋 Привет, {name}!\n\n"
-            "Это наше семейное меню: без глютена, с контролем углеводов.\n"
+            "Это <b>Freely</b> 🌿 — вкусное питание без глютена и с контролем сахара.\n"
             "Выбирай блюда → собирай план → получай список покупок.",
         )
 
