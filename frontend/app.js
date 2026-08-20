@@ -684,4 +684,30 @@ document.querySelectorAll("#bottomNav button").forEach((b) =>
   state._images = await api("/images").catch(() => ({}));
   await refreshCartCount();
   switchTab("menu");
+  maybeShowDisclaimer();
 })();
+
+/* ---------- медицинский дисклеймер (один раз, с плавной анимацией) ---------- */
+async function maybeShowDisclaimer() {
+  try { if (localStorage.getItem("freely_disc_v1")) return; } catch (e) {}
+  let text = "Freely помогает планировать питание и выбирать блюда. Он не заменяет " +
+    "врача или индивидуальный план питания. При ГСД цели по углеводам, калорийности " +
+    "и контролю глюкозы определяет медицинский специалист.";
+  try { const d = await api("/disclaimer"); if (d && d.text) text = d.text; } catch (e) {}
+  const el = document.createElement("div");
+  el.className = "disc-overlay";
+  el.innerHTML = `<div class="disc-card">
+      <div class="disc-emoji">🌿</div>
+      <h2 class="disc-title">Добро пожаловать в Freely</h2>
+      <p class="disc-text">${esc(text)}</p>
+      <button class="btn btn-primary disc-ok">Понятно, продолжить</button>
+    </div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  el.querySelector(".disc-ok").addEventListener("click", () => {
+    try { localStorage.setItem("freely_disc_v1", "1"); } catch (e) {}
+    haptic("medium");
+    el.classList.remove("show");
+    setTimeout(() => el.remove(), 450);
+  });
+}

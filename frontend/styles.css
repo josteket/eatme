@@ -354,6 +354,29 @@ ul.plain li { font-size: 13.5px; margin: 7px 0; padding-left: 22px; position: re
 }
 .topbar-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 .dice.ghost { background: var(--card); box-shadow: var(--shadow-sm); }
+
+/* ---- медицинский дисклеймер ---- */
+.disc-overlay {
+  position: fixed; inset: 0; z-index: 100; display: flex; align-items: center;
+  justify-content: center; padding: 24px;
+  background: rgba(20,18,15,0); backdrop-filter: blur(0);
+  transition: background .5s ease, backdrop-filter .5s ease;
+}
+.disc-overlay.show { background: rgba(20,18,15,.5); backdrop-filter: blur(7px); }
+.disc-card {
+  background: var(--bg); border-radius: 28px; padding: 32px 24px 24px; max-width: 440px;
+  width: 100%; text-align: center; box-shadow: var(--shadow-lg);
+  transform: translateY(34px) scale(.92); opacity: 0;
+  transition: transform .55s cubic-bezier(.2,.9,.3,1), opacity .45s ease;
+}
+.disc-overlay.show .disc-card { transform: none; opacity: 1; }
+.disc-emoji { font-size: 58px; line-height: 1; animation: floaty 5s ease-in-out infinite; }
+.disc-title { font-size: 23px; font-weight: 850; letter-spacing: -.03em; margin: 14px 0 12px; }
+.disc-text { font-size: 14px; color: var(--ink-soft); line-height: 1.6; margin: 0 0 24px; }
+.disc-ok { max-width: 300px; margin: 0 auto; }
+@media (prefers-reduced-motion: reduce) {
+  .disc-card { transition: opacity .3s ease; transform: none; }
+}
 .bottom-nav button {
   border: none; background: none; padding: 11px 0 9px; font-size: 10.5px; color: var(--muted);
   display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; font-weight: 600;
