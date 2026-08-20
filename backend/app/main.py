@@ -134,7 +134,9 @@ async def _shutdown() -> None:
 
 @app.get("/api/health")
 def health():
-    return {"ok": True}
+    from .database import ACTIVE_DIALECT
+
+    return {"ok": True, "db": ACTIVE_DIALECT}
 
 
 @app.post(WEBHOOK_PATH)

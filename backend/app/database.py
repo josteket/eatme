@@ -1,30 +1,55 @@
-"""Подключение к SQLite через SQLAlchemy 2.x."""
+"""Подключение к БД (SQLite локально / Postgres в облаке) через SQLAlchemy 2.x."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import PROJECT_ROOT, settings
 
-# Приводим относительный sqlite-путь к абсолютному (чтобы база всегда была в корне)
-url = settings.DATABASE_URL
-if url.startswith("sqlite:///./"):
-    db_path = PROJECT_ROOT / url.replace("sqlite:///./", "")
-    url = f"sqlite:///{db_path}"
-# Render/Heroku дают DATABASE_URL как postgres:// — SQLAlchemy ждёт postgresql://
-if url.startswith("postgres://"):
-    url = url.replace("postgres://", "postgresql://", 1)
+log = logging.getLogger("eatme.db")
 
-IS_SQLITE = url.startswith("sqlite")
 
-engine = create_engine(
-    url,
-    connect_args={"check_same_thread": False} if IS_SQLITE else {},
-    pool_pre_ping=not IS_SQLITE,
-    echo=False,
-)
+def _normalize(u: str) -> str:
+    if u.startswith("sqlite:///./"):
+        return f"sqlite:///{PROJECT_ROOT / u.replace('sqlite:///./', '')}"
+    if u.startswith("postgres://"):  # Render/Heroku стиль
+        return u.replace("postgres://", "postgresql://", 1)
+    return u
+
+
+def _make_engine(u: str):
+    is_sqlite = u.startswith("sqlite")
+    eng = create_engine(
+        u,
+        connect_args={"check_same_thread": False} if is_sqlite else {"connect_timeout": 15},
+        pool_pre_ping=not is_sqlite,
+        pool_recycle=1800 if not is_sqlite else -1,
+        echo=False,
+    )
+    return eng, is_sqlite
+
+
+_SQLITE_FALLBACK = f"sqlite:///{PROJECT_ROOT / 'eatme.db'}"
+
+url = _normalize(settings.DATABASE_URL)
+engine, IS_SQLITE = _make_engine(url)
+
+# Если задан внешний Postgres — проверяем связь; при сбое НЕ роняем сервис, а
+# откатываемся на локальный SQLite (данные будут эфемерными, но приложение живёт).
+if not IS_SQLITE:
+    try:
+        with engine.connect() as c:
+            c.execute(text("select 1"))
+        log.info("БД: подключён Postgres (%s)", engine.url.host)
+    except Exception as e:  # noqa: BLE001
+        log.error("БД: Postgres недоступен (%s) — откат на SQLite", str(e)[:150])
+        engine.dispose()
+        engine, IS_SQLITE = _make_engine(_SQLITE_FALLBACK)
+
+ACTIVE_DIALECT = engine.dialect.name
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

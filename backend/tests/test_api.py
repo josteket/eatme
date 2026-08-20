@@ -2,7 +2,9 @@
 
 
 def test_health(client):
-    assert client.get("/api/health").json() == {"ok": True}
+    body = client.get("/api/health").json()
+    assert body["ok"] is True
+    assert "db" in body
 
 
 def test_menu_excludes_gluten_dishes(client):
