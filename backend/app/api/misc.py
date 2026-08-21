@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import random
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -39,6 +40,18 @@ DISCLAIMER = (
 )
 
 
+PROFILE_LABELS = {
+    "pregnant": "Беременность 🤰",
+    "gdm": "ГСД · контроль сахара",
+    "celiac": "Целиакия · без глютена",
+    "healthy": "Правильное питание 🌿",
+}
+
+
+def _role_label(role: str) -> str:
+    return {"wife": "Жена", "husband": "Муж"}.get(role, "Пользователь")
+
+
 @router.get("/me")
 def me(user: User = Depends(current_user)):
     return {
@@ -47,7 +60,34 @@ def me(user: User = Depends(current_user)):
         "first_name": user.first_name,
         "username": user.username,
         "role": user.role,
-        "role_label": "Жена" if user.role == "wife" else "Муж",
+        "role_label": _role_label(user.role),
+        "profile_type": user.profile_type,
+        "profile_label": PROFILE_LABELS.get(user.profile_type or "", None),
+    }
+
+
+class ProfileUpdate(BaseModel):
+    profile_type: str | None = None
+    first_name: str | None = None
+
+
+@router.patch("/profile")
+def update_profile(
+    body: ProfileUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    if body.profile_type is not None:
+        if body.profile_type not in PROFILE_LABELS:
+            raise HTTPException(status_code=400, detail="Неизвестный профиль")
+        user.profile_type = body.profile_type
+    if body.first_name:
+        user.first_name = body.first_name.strip()[:128]
+    db.commit()
+    return {
+        "profile_type": user.profile_type,
+        "profile_label": PROFILE_LABELS.get(user.profile_type or "", None),
+        "first_name": user.first_name,
     }
 
 

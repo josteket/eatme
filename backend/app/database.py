@@ -67,21 +67,26 @@ def get_db() -> Iterator[Session]:
 
 
 def _ensure_columns() -> None:
-    """Лёгкая миграция для SQLite: добавить недостающие колонки в существующую базу."""
-    from sqlalchemy import text
-
+    """Лёгкая миграция: добавить недостающие колонки (SQLite и Postgres)."""
     wanted = {
         "orders": [("checked_items", "TEXT DEFAULT ''")],
+        "users": [("profile_type", "VARCHAR(24)")],
     }
     with engine.begin() as conn:
         for table, cols in wanted.items():
-            existing = {
-                row[1]
-                for row in conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
-            }
-            for name, decl in cols:
-                if name not in existing:
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {decl}"))
+            if IS_SQLITE:
+                existing = {
+                    row[1]
+                    for row in conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+                }
+                for name, decl in cols:
+                    if name not in existing:
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {decl}"))
+            else:
+                for name, decl in cols:
+                    conn.execute(
+                        text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {decl}")
+                    )
 
 
 def _migrate_statuses() -> None:
@@ -101,9 +106,8 @@ def init_db() -> None:
     from . import models  # noqa: F401  (регистрация моделей)
 
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
     if IS_SQLITE:
-        # лёгкие миграции для уже существующих SQLite-баз
-        _ensure_columns()
         _migrate_statuses()
 
 

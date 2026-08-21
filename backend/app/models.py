@@ -32,7 +32,9 @@ class User(Base):
     telegram_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
     username: Mapped[str | None] = mapped_column(String(128), nullable=True)
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    role: Mapped[str] = mapped_column(String(16), default="husband")  # wife | husband
+    role: Mapped[str] = mapped_column(String(16), default="user")  # wife | husband | user
+    # ситуация пользователя: pregnant | gdm | celiac | healthy
+    profile_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

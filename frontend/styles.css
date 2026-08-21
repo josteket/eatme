@@ -386,6 +386,16 @@ ul.plain li { font-size: 13.5px; margin: 7px 0; padding-left: 22px; position: re
 .disc-title { font-size: 23px; font-weight: 850; letter-spacing: -.03em; margin: 14px 0 12px; }
 .disc-text { font-size: 14px; color: var(--ink-soft); line-height: 1.6; margin: 0 0 24px; }
 .disc-ok { max-width: 300px; margin: 0 auto; }
+.onb-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+.onb-opt {
+  display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 18px 8px;
+  border-radius: 16px; border: 1.5px solid var(--line-2); background: var(--card);
+  font-size: 13px; font-weight: 650; color: var(--ink); cursor: pointer;
+  transition: transform .12s ease, background .15s ease, border-color .15s ease, color .15s ease;
+}
+.onb-opt .onb-emoji { font-size: 30px; }
+.onb-opt.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.onb-opt:active { transform: scale(.96); }
 @media (prefers-reduced-motion: reduce) {
   .disc-card { transition: opacity .3s ease; transform: none; }
 }

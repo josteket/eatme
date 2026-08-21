@@ -59,13 +59,23 @@ def test_allowed_user_gets_access(client, monkeypatch):
     assert resp.json()["telegram_id"] == 674280065
 
 
-def test_stranger_denied(client, monkeypatch):
+def test_stranger_allowed_as_user(client, monkeypatch):
+    # Приложение публичное: любой пользователь с валидной подписью — обычный user
     monkeypatch.setattr(settings, "BOT_TOKEN", TEST_TOKEN)
     monkeypatch.setattr(settings, "ALLOWED_TELEGRAM_IDS", "674280065,844197375")
     monkeypatch.setattr(settings, "DEV_MODE", False)
-    init = make_init_data(TEST_TOKEN, {"id": 555000111, "first_name": "Чужой"})
+    init = make_init_data(TEST_TOKEN, {"id": 555000111, "first_name": "Гость"})
     resp = client.get("/api/me", headers={"X-Telegram-Init-Data": init})
-    assert resp.status_code == 403
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "user"
+
+
+def test_profile_update(client):
+    r = client.patch("/api/profile", json={"profile_type": "pregnant"}).json()
+    assert r["profile_type"] == "pregnant"
+    assert client.get("/api/me").json()["profile_type"] == "pregnant"
+    bad = client.patch("/api/profile", json={"profile_type": "nonsense"})
+    assert bad.status_code == 400
 
 
 def test_no_auth_without_dev_mode(client, monkeypatch):

@@ -633,10 +633,10 @@ async function renderProfile() {
   const [disc, stats] = await Promise.all([api("/disclaimer"), api("/stats").catch(() => null)]);
   v.innerHTML = `
     <div class="profile-card">
-      <h3>${me.role_label === "Жена" ? "👩" : "👨"} ${esc(me.first_name || "Профиль")}</h3>
-      <div class="r-sub">Роль в семье: ${me.role_label}</div>
-      <span class="profile-badge">STRICT GF + ГСД</span>
-      <div class="r-sub" style="margin-top:8px">Строго без глютена · контроль углеводов · беременность</div>
+      <h3>${me.role_label === "Жена" ? "👩" : me.role_label === "Муж" ? "👨" : "🌿"} ${esc(me.first_name || "Профиль")}</h3>
+      <span class="profile-badge">${me.profile_label ? esc(me.profile_label) : "Профиль не выбран"}</span>
+      <div class="r-sub" style="margin-top:8px">Все блюда — без глютена и с контролем углеводов</div>
+      <button class="btn btn-ghost" id="changeProfile" style="margin-top:14px;padding:11px">Изменить ситуацию</button>
     </div>
     ${stats ? statsHTML(stats) : ""}
     <div class="profile-card">
@@ -644,6 +644,8 @@ async function renderProfile() {
       <div class="r-sub" style="line-height:1.5"><b>Freely 🌿</b> — вкусное питание без глютена и с контролем сахара: для будущих мам (ГСД), для целиакии и для всех, кто хочет питаться правильно. Выбирай блюда, собирай план, получай список покупок.</div>
     </div>
     <div class="disclaimer">${esc(disc.text)}</div>`;
+  const cp = document.getElementById("changeProfile");
+  if (cp) cp.addEventListener("click", () => showProfilePicker(true));
 }
 
 /* ---------- RANDOM ("что поесть") ---------- */
@@ -702,12 +704,13 @@ document.querySelectorAll("#bottomNav button").forEach((b) =>
   state._images = await api("/images").catch(() => ({}));
   await refreshCartCount();
   switchTab("menu");
-  maybeShowDisclaimer();
+  const shownDisc = await maybeShowDisclaimer();
+  if (!shownDisc) showProfilePicker(false);
 })();
 
 /* ---------- медицинский дисклеймер (один раз, с плавной анимацией) ---------- */
 async function maybeShowDisclaimer() {
-  try { if (localStorage.getItem("freely_disc_v1")) return; } catch (e) {}
+  try { if (localStorage.getItem("freely_disc_v1")) return false; } catch (e) {}
   let text = "Freely помогает планировать питание и выбирать блюда. Он не заменяет " +
     "врача или индивидуальный план питания. При ГСД цели по углеводам, калорийности " +
     "и контролю глюкозы определяет медицинский специалист.";
@@ -726,6 +729,42 @@ async function maybeShowDisclaimer() {
     try { localStorage.setItem("freely_disc_v1", "1"); } catch (e) {}
     haptic("medium");
     el.classList.remove("show");
-    setTimeout(() => el.remove(), 450);
+    setTimeout(() => { el.remove(); showProfilePicker(false); }, 450);
   });
+  return true;
+}
+
+/* ---------- онбординг: выбор ситуации (профиля) ---------- */
+const PROFILE_OPTS = [
+  ["pregnant", "🤰", "Беременность"],
+  ["gdm", "🩸", "ГСД · сахар"],
+  ["celiac", "🌾", "Целиакия · без глютена"],
+  ["healthy", "🌿", "Правильное питание"],
+];
+
+function showProfilePicker(force) {
+  if (!force && (!state.me || state.me.profile_type)) return;
+  const el = document.createElement("div");
+  el.className = "disc-overlay";
+  el.innerHTML = `<div class="disc-card">
+      <div class="disc-emoji">🌿</div>
+      <h2 class="disc-title">Что тебе ближе?</h2>
+      <p class="disc-text">Подберём акценты в меню под твою ситуацию. Поменять можно в профиле в любой момент.</p>
+      <div class="onb-opts">${PROFILE_OPTS.map(([v, e, t]) =>
+        `<button class="onb-opt ${state.me && state.me.profile_type === v ? "active" : ""}" data-v="${v}"><span class="onb-emoji">${e}</span>${t}</button>`).join("")}</div>
+    </div>`;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("show"));
+  const close = () => { el.classList.remove("show"); setTimeout(() => el.remove(), 450); };
+  el.addEventListener("click", (e) => { if (e.target === el) close(); });
+  el.querySelectorAll(".onb-opt").forEach((b) =>
+    b.addEventListener("click", async () => {
+      try {
+        const res = await api("/profile", { method: "PATCH", body: JSON.stringify({ profile_type: b.dataset.v }) });
+        if (state.me) { state.me.profile_type = res.profile_type; state.me.profile_label = res.profile_label; }
+      } catch (e) {}
+      haptic("medium");
+      close();
+      if (state.tab === "profile") renderProfile();
+    }));
 }

@@ -55,13 +55,16 @@ class Settings(BaseSettings):
     def role_for(self, telegram_id: int) -> str:
         if self.wife_id is not None and telegram_id == self.wife_id:
             return "wife"
-        return "husband"
+        if telegram_id in self.allowed_ids:
+            return "husband"
+        return "user"
+
+    def is_admin(self, telegram_id: int) -> bool:
+        return telegram_id in self.allowed_ids
 
     def is_allowed(self, telegram_id: int) -> bool:
-        # Если список пуст — в DEV пускаем всех (для первого запуска/теста).
-        if not self.allowed_ids:
-            return self.DEV_MODE
-        return telegram_id in self.allowed_ids
+        # Публичное приложение — пускаем любого пользователя Telegram.
+        return True
 
     @property
     def is_webapp_public(self) -> bool:

@@ -128,11 +128,11 @@ def _order_payload(db: Session, order: Order, with_list: bool = True) -> dict:
 
 
 def _notify_targets(author: User) -> list[int]:
-    """Кому слать уведомление — всем разрешённым (муж+жена)."""
-    ids = list(settings.allowed_ids)
-    if author.telegram_id not in ids:
-        ids.append(author.telegram_id)
-    return ids
+    """Кому слать уведомление. Семья владельца уведомляет друг друга; обычный
+    пользователь — только себя (друзья/семья появятся на след. этапах)."""
+    if author.telegram_id in settings.allowed_ids:
+        return list(settings.allowed_ids)
+    return [author.telegram_id]
 
 
 @router.post("/orders")
