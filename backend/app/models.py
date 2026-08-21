@@ -119,6 +119,19 @@ class Favorite(Base):
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))
 
 
+class GlucoseEntry(Base):
+    """Личный замер глюкозы (дневник для ГСД). Не диагноз — просто дневник."""
+    __tablename__ = "glucose_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    value: Mapped[float] = mapped_column(Float)          # ммоль/л
+    kind: Mapped[str] = mapped_column(String(16), default="after")  # fasting|before|after
+    note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    recipe_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Like(Base):
     """Глобальный лайк блюда (общий на всех пользователей → популярность)."""
     __tablename__ = "likes"

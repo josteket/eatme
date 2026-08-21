@@ -257,9 +257,12 @@ async function openDish(id) {
         <div class="detail-name">${esc(r.name)}</div>
         ${r.cuisine ? `<div class="cuisine-chip">${esc(r.cuisine)} кухня</div>` : ""}
         <div class="detail-desc">${esc(r.description)}</div>
-        <button class="like-btn ${r.is_liked ? "liked" : ""}" id="likeBtn">
-          <span class="lk-emoji">👍</span> Нравится · <span id="likeCount">${r.likes || 0}</span>
-        </button>
+        <div class="detail-actions">
+          <button class="like-btn ${r.is_liked ? "liked" : ""}" id="likeBtn">
+            <span class="lk-emoji">👍</span> Нравится · <span id="likeCount">${r.likes || 0}</span>
+          </button>
+          <button class="like-btn" id="glucoseBtn">🩸 Записать сахар</button>
+        </div>
 
         <div class="nutri">
           <div><b>${n.kcal}</b><span>ккал</span></div>
@@ -309,6 +312,8 @@ async function openDish(id) {
       $("#likeCount").textContent = res.likes;
       haptic("medium");
     });
+    $("#glucoseBtn").addEventListener("click", () =>
+      openGlucoseForm(r.id, `${r.emoji} ${r.name}`));
     $("#servMinus").addEventListener("click", () => changeServ(-1));
     $("#servPlus").addEventListener("click", () => changeServ(1));
     $("#addCart").addEventListener("click", addToCart);
@@ -625,12 +630,95 @@ function statsHTML(s) {
     </div>`;
 }
 
+/* ---------- дневник глюкозы ---------- */
+function glKindColor(kind) {
+  return kind === "fasting" ? "#3a6ea5" : kind === "before" ? "#c9683f" : "#2f7d4f";
+}
+
+function glucoseSpark(entries) {
+  const pts = entries.slice().reverse().slice(-20); // последние по времени
+  if (pts.length < 2) return "";
+  const vals = pts.map((e) => e.value);
+  const min = Math.min(...vals), max = Math.max(...vals), range = (max - min) || 1;
+  const W = 300, H = 68, pad = 10;
+  const x = (i) => pad + (i * (W - 2 * pad)) / (pts.length - 1);
+  const y = (val) => pad + (1 - (val - min) / range) * (H - 2 * pad);
+  const path = pts.map((e, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(e.value).toFixed(1)}`).join(" ");
+  const dots = pts.map((e, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(e.value).toFixed(1)}" r="3.2" fill="${glKindColor(e.kind)}"/>`).join("");
+  return `<svg class="gl-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" opacity=".5"/>${dots}</svg>`;
+}
+
+function glucoseCardHTML(data) {
+  const s = data.summary;
+  const rows = data.entries.slice(0, 8).map((e) => {
+    const d = new Date(e.created_at);
+    const when = d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " +
+      d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    const extra = [e.recipe_name && esc(e.recipe_name), e.note && esc(e.note)].filter(Boolean).join(" · ");
+    return `<div class="gl-row">
+      <span class="gl-val" style="color:${glKindColor(e.kind)}">${e.value}</span>
+      <div class="gl-mid"><div class="gl-kind">${e.kind_label}</div><div class="gl-when">${when}${extra ? " · " + extra : ""}</div></div>
+      <button class="gl-del" data-id="${e.id}" title="Удалить">✕</button>
+    </div>`;
+  }).join("");
+  const body = s.count
+    ? `<div class="gl-summary">
+        <div><b style="color:${glKindColor(s.last.kind)}">${s.last.value}</b><span>последний</span></div>
+        <div><b>${s.avg}</b><span>среднее</span></div>
+        <div><b>${s.count}</b><span>замеров</span></div>
+      </div>${glucoseSpark(data.entries)}<div class="gl-list">${rows}</div>`
+    : `<div class="r-sub" style="margin-top:8px">Записывай сахар до и после еды — увидишь свою динамику. Это личный дневник, не диагноз.</div>`;
+  return `<div class="profile-card">
+    <div class="r-top"><h3>🩸 Дневник глюкозы</h3><button class="dice ghost" id="glAdd" title="Добавить замер">＋</button></div>
+    ${body}</div>`;
+}
+
+function openGlucoseForm(recipeId, recipeName) {
+  const inner = $("#sheetInner");
+  const defKind = recipeId ? "after" : "before";
+  const kinds = [["fasting", "Натощак"], ["before", "До еды"], ["after", "После еды"]];
+  inner.innerHTML = `<div class="detail-body">
+      <div class="r-top"><div class="detail-name">🩸 Замер сахара</div><button class="sheet-close" id="closeSheet" style="position:static">✕</button></div>
+      ${recipeName ? `<p class="detail-desc">Блюдо: ${esc(recipeName)}</p>` : ""}
+      <div class="blk"><h4>Значение, ммоль/л</h4>
+        <input id="glVal" class="note-input" type="number" step="0.1" min="1" max="40" inputmode="decimal" placeholder="напр. 5.4" style="font-size:20px;font-weight:800;text-align:center"/></div>
+      <div class="blk"><h4>Когда</h4>
+        <div class="status-picker" style="grid-template-columns:repeat(3,1fr)">
+          ${kinds.map(([k, l]) => `<button class="status-opt ${k === defKind ? "active" : ""}" data-k="${k}">${l}</button>`).join("")}</div></div>
+      <textarea id="glNote" class="note-input" placeholder="Комментарий (необязательно)…" style="margin-top:12px"></textarea>
+    </div>
+    <div class="sticky-cta"><button class="btn btn-primary" id="glSave">Сохранить замер</button></div>`;
+  $("#sheet").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  $("#closeSheet").addEventListener("click", closeSheet);
+  let kind = defKind;
+  inner.querySelectorAll(".status-opt[data-k]").forEach((b) =>
+    b.addEventListener("click", () => {
+      inner.querySelectorAll(".status-opt").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active"); kind = b.dataset.k; haptic();
+    }));
+  $("#glSave").addEventListener("click", async () => {
+    const val = parseFloat(($("#glVal").value || "").replace(",", "."));
+    if (!(val >= 1 && val <= 40)) { toast("Введи значение 1–40"); return; }
+    try {
+      await api("/glucose", { method: "POST", body: JSON.stringify({ value: val, kind, note: $("#glNote").value.trim() || null, recipe_id: recipeId || null }) });
+      haptic("medium"); toast("Замер сохранён 🩸"); closeSheet();
+      if (state.tab === "profile") renderProfile();
+    } catch (e) { toast(e.message); }
+  });
+}
+
 async function renderProfile() {
   const v = view();
   $("#searchWrap").classList.add("hidden");
   v.innerHTML = `<div class="loader">Загрузка…</div>`;
   const me = state.me || (await api("/me"));
-  const [disc, stats] = await Promise.all([api("/disclaimer"), api("/stats").catch(() => null)]);
+  const [disc, stats, gl] = await Promise.all([
+    api("/disclaimer"),
+    api("/stats").catch(() => null),
+    api("/glucose").catch(() => null),
+  ]);
   v.innerHTML = `
     <div class="profile-card">
       <h3>${me.role_label === "Жена" ? "👩" : me.role_label === "Муж" ? "👨" : "🌿"} ${esc(me.first_name || "Профиль")}</h3>
@@ -639,6 +727,7 @@ async function renderProfile() {
       <button class="btn btn-ghost" id="changeProfile" style="margin-top:14px;padding:11px">Изменить ситуацию</button>
     </div>
     ${stats ? statsHTML(stats) : ""}
+    ${gl ? glucoseCardHTML(gl) : ""}
     <div class="profile-card">
       <h3>ℹ️ О Freely</h3>
       <div class="r-sub" style="line-height:1.5"><b>Freely 🌿</b> — вкусное питание без глютена и с контролем сахара: для будущих мам (ГСД), для целиакии и для всех, кто хочет питаться правильно. Выбирай блюда, собирай план, получай список покупок.</div>
@@ -646,6 +735,13 @@ async function renderProfile() {
     <div class="disclaimer">${esc(disc.text)}</div>`;
   const cp = document.getElementById("changeProfile");
   if (cp) cp.addEventListener("click", () => showProfilePicker(true));
+  const glAdd = document.getElementById("glAdd");
+  if (glAdd) glAdd.addEventListener("click", () => openGlucoseForm(null, null));
+  v.querySelectorAll(".gl-del").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await api(`/glucose/${b.dataset.id}`, { method: "DELETE" });
+      haptic(); renderProfile();
+    }));
 }
 
 /* ---------- RANDOM ("что поесть") ---------- */

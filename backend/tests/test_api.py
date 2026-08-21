@@ -163,6 +163,26 @@ def test_likes_toggle_and_popular(client):
     assert r2["liked"] is False and r2["likes"] == 0
 
 
+def test_glucose_diary(client):
+    recipes = client.get("/api/recipes").json()
+    rid = recipes[0]["id"]
+    e = client.post("/api/glucose", json={
+        "value": 5.4, "kind": "after", "recipe_id": rid, "note": "тест"}).json()
+    assert e["value"] == 5.4
+    assert e["kind_label"] == "После еды"
+    assert e["recipe_name"]
+
+    data = client.get("/api/glucose").json()
+    assert data["summary"]["count"] == 1
+    assert data["entries"][0]["value"] == 5.4
+
+    # значение вне диапазона отклоняется
+    assert client.post("/api/glucose", json={"value": 999}).status_code == 422
+
+    client.delete(f"/api/glucose/{e['id']}")
+    assert client.get("/api/glucose").json()["summary"]["count"] == 0
+
+
 def test_stats_reflects_orders(client):
     recipes = client.get("/api/recipes").json()
     client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 2})
