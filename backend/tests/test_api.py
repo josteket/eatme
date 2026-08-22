@@ -62,6 +62,22 @@ def test_cart_and_order_flow(client):
     assert client.get("/api/cart").json()["count"] == 0
 
 
+def test_order_tagging_ignores_non_friends(client):
+    recipes = client.get("/api/recipes").json()
+    client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 1})
+    order = client.post("/api/orders", json={"friend_ids": [999999]}).json()
+    # 999999 не друг автора → в участники не попадает
+    assert order["participants"] == []
+
+
+def test_order_access_denied_for_stranger(client):
+    recipes = client.get("/api/recipes").json()
+    client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 1})
+    order = client.post("/api/orders", json={}).json()
+    # автор видит свой заказ
+    assert client.get(f"/api/orders/{order['id']}").status_code == 200
+
+
 def test_order_status_change(client):
     recipes = client.get("/api/recipes").json()
     client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 2})

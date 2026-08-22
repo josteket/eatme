@@ -343,6 +343,7 @@ async function openDish(id) {
 function closeSheet() {
   $("#sheet").classList.add("hidden");
   document.body.style.overflow = "";
+  if (_orderPoll) { clearInterval(_orderPoll); _orderPoll = null; }
 }
 $("#sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
 
@@ -403,13 +404,40 @@ async function renderCart() {
       </div>
     </div>`).join("");
 
+  const fr = await api("/friends").catch(() => ({ friends: [] }));
+  state._tagFriends = new Set();
+  const tagBlock = fr.friends.length ? `
+    <div class="section-title" style="margin-top:16px">Для кого готовим?</div>
+    <div class="chips" id="tagChips">
+      <button class="chip active" data-me="1">🙂 Только я</button>
+      ${fr.friends.map((f) => `<button class="chip" data-fid="${f.id}">${f.role === "wife" ? "👩" : f.role === "husband" ? "👨" : "🙂"} ${esc(f.name)}</button>`).join("")}
+    </div>` : "";
+
   v.innerHTML = `
     <div class="section-title">🛒 План еды · ${cart.count} блюд</div>
     ${rows}
+    ${tagBlock}
     <textarea class="note-input" id="orderNote" placeholder="Комментарий к плану (необязательно)…" style="margin:8px 0 4px"></textarea>
     <button class="btn btn-primary" id="checkout" style="margin-top:8px">✅ Оформить план и собрать список покупок</button>
     <button class="btn btn-ghost" id="previewShop" style="margin-top:10px">🧾 Показать список покупок</button>
     <button class="btn btn-danger" id="clearCart" style="margin-top:10px">Очистить план</button>`;
+
+  const tc = document.getElementById("tagChips");
+  if (tc) {
+    const meChip = tc.querySelector(".chip[data-me]");
+    tc.querySelectorAll(".chip[data-fid]").forEach((c) => c.addEventListener("click", () => {
+      const fid = parseInt(c.dataset.fid, 10);
+      if (state._tagFriends.has(fid)) { state._tagFriends.delete(fid); c.classList.remove("active"); }
+      else { state._tagFriends.add(fid); c.classList.add("active"); }
+      if (meChip) meChip.classList.toggle("active", state._tagFriends.size === 0);
+      haptic();
+    }));
+    if (meChip) meChip.addEventListener("click", () => {
+      state._tagFriends.clear();
+      tc.querySelectorAll(".chip[data-fid]").forEach((c) => c.classList.remove("active"));
+      meChip.classList.add("active"); haptic();
+    });
+  }
 
   v.querySelectorAll(".cp").forEach((b) => b.addEventListener("click", () => updateServ(b.dataset.id, +1)));
   v.querySelectorAll(".cm").forEach((b) => b.addEventListener("click", () => updateServ(b.dataset.id, -1)));
@@ -493,7 +521,8 @@ async function checkout() {
   btn.disabled = true;
   btn.textContent = "Оформляем…";
   try {
-    const order = await api("/orders", { method: "POST", body: JSON.stringify({ note: note || null }) });
+    const friend_ids = Array.from(state._tagFriends || []);
+    const order = await api("/orders", { method: "POST", body: JSON.stringify({ note: note || null, friend_ids }) });
     await refreshCartCount();
     haptic("medium");
     showOrderSuccess(order);
@@ -535,11 +564,12 @@ async function renderOrders() {
   const stClass = (s) => "st-" + s;
   v.innerHTML = `<div class="section-title">📦 Планы еды</div>` + orders.map((o) => {
     const date = new Date(o.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-    const who = o.author_role === "wife" ? "👩" : "👨";
+    const who = o.author_role === "wife" ? "👩" : o.author_role === "husband" ? "👨" : "🙂";
+    const shared = o.participants && o.participants.length ? ` · 👥 +${o.participants.length}` : "";
     return `<div class="list-row tappable" data-oid="${o.id}">
       <div class="r-top">
         <div><div class="r-name">План №${o.id} ${who}</div>
-        <div class="r-sub">${date} · ${o.items.length} блюд · ${esc(o.author)}</div></div>
+        <div class="r-sub">${date} · ${o.items.length} блюд · ${esc(o.author)}${shared}</div></div>
         <span class="status ${stClass(o.status)}">${o.status_label}</span>
       </div>
       <div class="r-sub" style="margin-top:8px">${o.items.map((i) => esc(i.name)).join(", ")}</div>
@@ -550,25 +580,59 @@ async function renderOrders() {
     row.addEventListener("click", () => openOrder(row.dataset.oid)));
 }
 
+let _orderPoll = null;
+
+function orderSig(o) {
+  const checked = [];
+  (o.shopping_list.groups || []).forEach((g) => g.items.forEach((it) => { if (it.checked) checked.push(it.key); }));
+  return o.status + "|" + checked.sort().join(",");
+}
+
 async function openOrder(id) {
   const o = await api(`/orders/${id}`);
+  renderOrderSheet(id, o, false);
+  if (_orderPoll) clearInterval(_orderPoll);
+  let sig = orderSig(o);
+  _orderPoll = setInterval(async () => {
+    if ($("#sheet").classList.contains("hidden")) { clearInterval(_orderPoll); _orderPoll = null; return; }
+    try {
+      const fresh = await api(`/orders/${id}`);
+      const ns = orderSig(fresh);
+      if (ns !== sig) { sig = ns; renderOrderSheet(id, fresh, true); }
+    } catch (e) {}
+  }, 4000);
+}
+
+function renderOrderSheet(id, o, keepScroll) {
   const inner = $("#sheetInner");
+  const savedScroll = keepScroll ? inner.scrollTop : 0;
   const statusOpts = [
     ["buy", "🛒 Купить"], ["wait", "⏳ Ожидание"],
     ["cook", "👨‍🍳 Готовить"], ["done", "✅ Выполнено"],
   ].map(([s, l]) => `<button class="status-opt st-opt-${s} ${o.status === s ? "active" : ""}" data-st="${s}">${l}</button>`).join("");
 
+  const members = [o.author, ...o.participants.map((p) => p.name)];
+  const membersLine = o.participants.length
+    ? `<div class="r-sub" style="margin-top:4px">👥 Вместе: ${members.map(esc).join(", ")} · список синхронится</div>` : "";
+
+  const sl = o.shopping_list;
+  const allBought = sl.total_items > 0 && sl.checked_count === sl.total_items;
+  const cookBanner = (allBought && o.status !== "cook" && o.status !== "done")
+    ? `<button class="btn btn-primary" id="cookNow" style="margin:14px 0 2px">✅ Всё куплено — можно готовить!</button>` : "";
+  const boughtLine = sl.total_items
+    ? `<span class="mh-count">${sl.checked_count}/${sl.total_items} куплено</span>` : "";
+
   inner.innerHTML = `<div class="detail-body">
       <div class="r-top"><div class="detail-name">План №${o.id}</div><button class="sheet-close" id="closeSheet" style="position:static">✕</button></div>
       <p class="detail-desc">${o.items.map((i) => `${esc(i.name)} — ${i.servings} порц.`).join("<br>")}</p>
+      ${membersLine}
       ${o.note ? `<div class="warn-box" style="background:var(--card);border-color:var(--line);color:var(--muted)">💬 ${esc(o.note)}</div>` : ""}
-      <div class="blk"><h4>📋 Изменить статус</h4>
-        <div class="status-picker">${statusOpts}</div>
-      </div>
-      <div class="shop-group-title" style="margin-top:18px">🧾 Список покупок</div>
-      <div id="shopList">${shoppingListHTML(o.shopping_list)}</div>
+      <div class="blk"><h4>📋 Статус</h4><div class="status-picker">${statusOpts}</div></div>
+      ${cookBanner}
+      <div class="shop-group-title" style="margin-top:18px">🧾 Список покупок ${boughtLine}</div>
+      <div id="shopList">${shoppingListHTML(sl)}</div>
     </div>
-    <div class="sticky-cta"><button class="btn btn-primary" id="repeatOrder">🔁 Повторить (в корзину)</button></div>`;
+    <div class="sticky-cta"><button class="btn btn-ghost" id="repeatOrder">🔁 Повторить (в корзину)</button></div>`;
   $("#sheet").classList.remove("hidden");
   document.body.style.overflow = "hidden";
   $("#closeSheet").addEventListener("click", closeSheet);
@@ -577,17 +641,20 @@ async function openOrder(id) {
     b.addEventListener("click", async () => {
       if (b.classList.contains("active")) return;
       await api(`/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: b.dataset.st }) });
-      haptic("medium");
-      toast("Статус обновлён");
-      openOrder(id);
+      haptic("medium"); toast("Статус обновлён"); openOrder(id);
     }));
+  const cook = document.getElementById("cookNow");
+  if (cook) cook.addEventListener("click", async () => {
+    await api(`/orders/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: "cook" }) });
+    haptic("medium"); toast("Готовим! 👨‍🍳"); openOrder(id);
+  });
   $("#repeatOrder").addEventListener("click", async () => {
     const res = await api(`/orders/${id}/repeat`, { method: "POST" });
     await refreshCartCount();
     toast(`Добавлено ${res.added} блюд в план 🛒`);
-    closeSheet();
-    switchTab("cart");
+    closeSheet(); switchTab("cart");
   });
+  if (keepScroll) inner.scrollTop = savedScroll;
 }
 
 /* ---------- PROFILE + STATS ---------- */

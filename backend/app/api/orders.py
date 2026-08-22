@@ -4,13 +4,20 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..auth import current_user
-from ..config import settings
 from ..database import get_db
-from ..models import CartItem, Order, OrderItem, Recipe, User
+from ..models import (
+    CartItem,
+    Friendship,
+    Order,
+    OrderItem,
+    OrderParticipant,
+    Recipe,
+    User,
+)
 from ..notifier import notify
 from ..nutrition import ShopLine, ShoppingList, build_shopping_list
 
@@ -39,6 +46,7 @@ SHOP_GROUP_ORDER = [
 
 class CreateOrder(BaseModel):
     note: str | None = None
+    friend_ids: list[int] = []
 
 
 def shop_key(ingredient_id: int, unit: str) -> str:
@@ -102,15 +110,41 @@ def _order_recipes(db: Session, order: Order) -> list[tuple[Recipe, int]]:
     return out
 
 
+def _participant_users(db: Session, order: Order) -> list[User]:
+    return db.scalars(
+        select(User)
+        .join(OrderParticipant, OrderParticipant.user_id == User.id)
+        .where(OrderParticipant.order_id == order.id)
+    ).all()
+
+
+def _member_ids(db: Session, order: Order) -> set[int]:
+    ids = {order.user_id}
+    ids.update(
+        db.scalars(
+            select(OrderParticipant.user_id).where(
+                OrderParticipant.order_id == order.id
+            )
+        ).all()
+    )
+    return ids
+
+
+def _can_access(db: Session, order: Order, user: User) -> bool:
+    return user.id in _member_ids(db, order)
+
+
+def _member_telegram_ids(db: Session, order: Order, exclude_user_id: int | None = None) -> list[int]:
+    users = db.scalars(select(User).where(User.id.in_(_member_ids(db, order)))).all()
+    return [u.telegram_id for u in users if u.id != exclude_user_id]
+
+
 def _order_payload(db: Session, order: Order, with_list: bool = True) -> dict:
     items = [
-        {
-            "recipe_id": it.recipe_id,
-            "name": it.recipe_name,
-            "servings": it.servings,
-        }
+        {"recipe_id": it.recipe_id, "name": it.recipe_name, "servings": it.servings}
         for it in order.items
     ]
+    parts = _participant_users(db, order)
     data = {
         "id": order.id,
         "created_at": order.created_at.isoformat() if order.created_at else None,
@@ -119,20 +153,16 @@ def _order_payload(db: Session, order: Order, with_list: bool = True) -> dict:
         "note": order.note,
         "author": order.user.first_name or order.user.username or "—",
         "author_role": order.user.role,
+        "author_id": order.user_id,
+        "participants": [
+            {"id": u.id, "name": u.first_name or u.username or "Друг"} for u in parts
+        ],
         "items": items,
     }
     if with_list:
         sl = build_shopping_list(_order_recipes(db, order))
         data["shopping_list"] = shopping_list_payload(sl, _load_checked(order))
     return data
-
-
-def _notify_targets(author: User) -> list[int]:
-    """Кому слать уведомление. Семья владельца уведомляет друг друга; обычный
-    пользователь — только себя (друзья/семья появятся на след. этапах)."""
-    if author.telegram_id in settings.allowed_ids:
-        return list(settings.allowed_ids)
-    return [author.telegram_id]
 
 
 @router.post("/orders")
@@ -163,6 +193,18 @@ def create_order(
                 )
             )
         db.delete(ci)  # очищаем корзину
+
+    # тэгнутые друзья → участники (только реальные друзья автора)
+    if body.friend_ids:
+        friend_ids = set(
+            db.scalars(
+                select(Friendship.friend_id).where(Friendship.user_id == user.id)
+            ).all()
+        )
+        for fid in set(body.friend_ids):
+            if fid in friend_ids:
+                db.add(OrderParticipant(order_id=order.id, user_id=fid))
+
     db.commit()
     db.refresh(order)
 
@@ -171,21 +213,28 @@ def create_order(
 
 
 def _send_new_order_notification(db: Session, order: Order, author: User) -> None:
-    who = author.first_name or ("Жена" if author.role == "wife" else "Муж")
+    who = author.first_name or "Кто-то"
     lines = [f"🛎 {who} собрал(а) план еды №{order.id}:", ""]
     for it in order.items:
         lines.append(f"• {it.recipe_name} — {it.servings} порц.")
     lines.append("")
     lines.append("🛒 Список покупок готов — откройте приложение.")
-    notify(_notify_targets(author), "\n".join(lines))
+    # уведомляем участников (кроме автора)
+    targets = _member_telegram_ids(db, order, exclude_user_id=author.id)
+    if targets:
+        notify(targets, "\n".join(lines))
 
 
 @router.get("/orders")
 def list_orders(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    # Показываем заказы всей семьи (общий дом), новые сверху
+    # Мои заказы + заказы, где меня тэгнули; новые сверху
+    part_ids = db.scalars(
+        select(OrderParticipant.order_id).where(OrderParticipant.user_id == user.id)
+    ).all()
     stmt = (
         select(Order)
         .options(selectinload(Order.items), selectinload(Order.user))
+        .where(or_(Order.user_id == user.id, Order.id.in_(part_ids)))
         .order_by(Order.created_at.desc())
     )
     orders = db.scalars(stmt).all()
@@ -203,6 +252,8 @@ def get_order(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Заказ не найден")
+    if not _can_access(db, order, user):
+        raise HTTPException(status_code=403, detail="Нет доступа к этому плану")
     return _order_payload(db, order)
 
 
@@ -224,6 +275,8 @@ def toggle_check(
     order = db.get(Order, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Заказ не найден")
+    if not _can_access(db, order, user):
+        raise HTTPException(status_code=403, detail="Нет доступа")
     checked = _load_checked(order)
     if body.checked:
         checked.add(body.key)
@@ -254,14 +307,18 @@ def update_status(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Заказ не найден")
+    if not _can_access(db, order, user):
+        raise HTTPException(status_code=403, detail="Нет доступа")
     order.status = body.status
     db.commit()
     db.refresh(order)
 
-    notify(
-        _notify_targets(user),
-        f"🔔 План еды №{order.id}: статус — {STATUS_LABELS[body.status]}",
-    )
+    targets = _member_telegram_ids(db, order, exclude_user_id=user.id)
+    if targets:
+        notify(
+            targets,
+            f"🔔 План еды №{order.id}: статус — {STATUS_LABELS[body.status]}",
+        )
     return _order_payload(db, order)
 
 
@@ -274,6 +331,8 @@ def repeat_order(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Заказ не найден")
+    if not _can_access(db, order, user):
+        raise HTTPException(status_code=403, detail="Нет доступа")
 
     added = 0
     for it in order.items:

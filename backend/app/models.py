@@ -182,6 +182,16 @@ class Order(Base):
     user: Mapped[User] = relationship()
 
 
+class OrderParticipant(Base):
+    """Кого тэгнули в заказ — видят его и синхронно отмечают список покупок."""
+    __tablename__ = "order_participants"
+    __table_args__ = (UniqueConstraint("order_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+
 class OrderItem(Base):
     __tablename__ = "order_items"
 
