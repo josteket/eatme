@@ -165,13 +165,15 @@ class CartItem(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     recipe_id: Mapped[int] = mapped_column(ForeignKey("recipes.id"))
     servings: Mapped[int] = mapped_column(Integer, default=2)
+    # «для кого это блюдо»: JSON-список id друзей (я — всегда, неявно)
+    eaters: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     status: Mapped[str] = mapped_column(String(16), default="buy")  # buy | wait | cook | done
     note: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -208,3 +210,40 @@ class OrderItem(Base):
     recipe: Mapped[Recipe] = relationship()
 
     # чекбоксы «куплено» для списка покупок хранить не будем — список динамический
+
+
+class CaffeineEntry(Base):
+    """Личный трекер кофеина (актуально при беременности/ГСД). Не диагноз."""
+    __tablename__ = "caffeine_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    mg: Mapped[float] = mapped_column(Float)                 # мг кофеина
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)  # кофе/чай/…
+    note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Clan(Base):
+    """Семейный клан — группа друзей, которую можно тэгнуть целиком."""
+    __tablename__ = "clans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    members: Mapped[list["ClanMember"]] = relationship(
+        back_populates="clan", cascade="all, delete-orphan"
+    )
+
+
+class ClanMember(Base):
+    __tablename__ = "clan_members"
+    __table_args__ = (UniqueConstraint("clan_id", "user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    clan_id: Mapped[int] = mapped_column(ForeignKey("clans.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+    clan: Mapped[Clan] = relationship(back_populates="members")

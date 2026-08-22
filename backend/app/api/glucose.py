@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..auth import current_user
 from ..database import get_db
 from ..models import GlucoseEntry, Recipe, User
+from ..timeutil import iso_utc
 
 router = APIRouter()
 
@@ -30,7 +31,7 @@ def _serialize(e: GlucoseEntry) -> dict:
         "kind_label": KIND_LABELS.get(e.kind, e.kind),
         "note": e.note,
         "recipe_name": e.recipe_name,
-        "created_at": e.created_at.isoformat() if e.created_at else None,
+        "created_at": iso_utc(e.created_at),
     }
 
 

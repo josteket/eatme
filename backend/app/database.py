@@ -22,12 +22,18 @@ def _normalize(u: str) -> str:
 
 def _make_engine(u: str):
     is_sqlite = u.startswith("sqlite")
+    pool_kw = (
+        {}
+        if is_sqlite
+        else {"pool_size": 10, "max_overflow": 20, "pool_timeout": 30}
+    )
     eng = create_engine(
         u,
         connect_args={"check_same_thread": False} if is_sqlite else {"connect_timeout": 15},
         pool_pre_ping=not is_sqlite,
         pool_recycle=1800 if not is_sqlite else -1,
         echo=False,
+        **pool_kw,
     )
     return eng, is_sqlite
 
@@ -75,6 +81,7 @@ def _ensure_columns() -> None:
             ("invite_code", "VARCHAR(16)"),
             ("disliked", "TEXT"),
         ],
+        "cart_items": [("eaters", "TEXT")],
     }
     with engine.begin() as conn:
         for table, cols in wanted.items():
@@ -91,6 +98,17 @@ def _ensure_columns() -> None:
                     conn.execute(
                         text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {name} {decl}")
                     )
+        # индексы под нагрузку (idempotent на SQLite и Postgres)
+        for idx, table, col in [
+            ("ix_orders_user_id", "orders", "user_id"),
+            ("ix_caffeine_user_id", "caffeine_entries", "user_id"),
+        ]:
+            try:
+                conn.execute(
+                    text(f"CREATE INDEX IF NOT EXISTS {idx} ON {table} ({col})")
+                )
+            except Exception:  # noqa: BLE001 — таблица может ещё не существовать
+                pass
 
 
 def _migrate_statuses() -> None:

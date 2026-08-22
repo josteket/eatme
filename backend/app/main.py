@@ -13,7 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from .config import PROJECT_ROOT, settings
 from .database import init_db, seed_if_empty
 from .api import (
+    caffeine,
     cart,
+    clans,
     dislikes,
     favorites,
     friends,
@@ -21,6 +23,7 @@ from .api import (
     likes,
     misc,
     orders,
+    quotes,
     recipes,
 )
 
@@ -79,7 +82,10 @@ app.include_router(favorites.router, prefix="/api", tags=["favorites"])
 app.include_router(likes.router, prefix="/api", tags=["likes"])
 app.include_router(glucose.router, prefix="/api", tags=["glucose"])
 app.include_router(friends.router, prefix="/api", tags=["friends"])
+app.include_router(clans.router, prefix="/api", tags=["clans"])
 app.include_router(dislikes.router, prefix="/api", tags=["dislikes"])
+app.include_router(caffeine.router, prefix="/api", tags=["caffeine"])
+app.include_router(quotes.router, prefix="/api", tags=["quotes"])
 app.include_router(misc.router, prefix="/api", tags=["misc"])
 
 

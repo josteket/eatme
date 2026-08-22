@@ -436,3 +436,25 @@ ul.plain li { font-size: 13.5px; margin: 7px 0; padding-left: 22px; position: re
 .disclaimer { font-size: 12.5px; color: var(--muted); line-height: 1.55; background: var(--card); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-sm); }
 .note-input { width: 100%; border: 1.5px solid var(--line-2); border-radius: 14px; padding: 12px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 62px; outline: none; }
 .note-input:focus { border-color: var(--accent); }
+
+/* цитата дня под заголовком */
+.daily-quote { margin: 8px 2px 2px; font-size: 13.5px; line-height: 1.5; color: var(--accent); font-style: italic; font-weight: 600; opacity: 0; transition: opacity .4s ease; }
+.daily-quote.show { opacity: 1; }
+.daily-quote.hidden { display: none; }
+
+/* видимая кнопка «+» (глюкоза, кофеин) */
+.add-btn { width: 40px; height: 40px; flex: 0 0 40px; border: none; border-radius: 50%; background: var(--accent); color: #fff; font-size: 24px; font-weight: 700; line-height: 1; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); cursor: pointer; transition: transform .12s ease, background .12s ease; }
+.add-btn:active { transform: scale(.9); background: var(--accent-2); }
+
+/* чипсы «кто будет есть» + участники клана — со свечением при выборе */
+.eaters { display: flex; flex-wrap: wrap; gap: 8px; }
+.eater { border: 2px solid var(--line-2); background: var(--card); color: var(--text, #2b2620); border-radius: 999px; padding: 8px 14px; font-size: 13.5px; font-weight: 700; cursor: pointer; transition: all .15s ease; }
+.eater.me { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); opacity: 1; }
+.eater.on { border-color: var(--accent); background: var(--accent); color: #fff; box-shadow: 0 0 0 3px var(--accent-soft), 0 4px 14px rgba(47,125,79,.35); transform: translateY(-1px); }
+.eater.clan { border-style: dashed; }
+.eater.clan.on { border-style: solid; }
+
+/* шкала кофеина за день */
+.caf-meter { width: 100%; height: 12px; background: var(--bg-2); border-radius: 999px; overflow: hidden; margin-top: 4px; }
+.caf-fill { height: 100%; border-radius: 999px; transition: width .4s ease; min-width: 4px; }
+.caf-preset { cursor: pointer; }

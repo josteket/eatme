@@ -228,6 +228,29 @@ async function openDish(id) {
 
   let servings = 1;
   let r = await api(`/recipes/${id}?servings=${servings}`);
+  const [friendsData, clans] = await Promise.all([
+    api("/friends").catch(() => ({ friends: [] })),
+    api("/clans").catch(() => []),
+  ]);
+  const eaters = new Set();
+
+  function clanOn(c) {
+    return c.member_ids.length > 0 && c.member_ids.every((id) => eaters.has(id));
+  }
+  function eatersBlock() {
+    if (!friendsData.friends.length) return "";
+    const fchips = friendsData.friends.map((f) =>
+      `<button class="eater ${eaters.has(f.id) ? "on" : ""}" data-fid="${f.id}">${f.role === "wife" ? "👩" : f.role === "husband" ? "👨" : "🙂"} ${esc(f.name)}</button>`).join("");
+    const cchips = (clans || []).map((c) =>
+      `<button class="eater clan ${clanOn(c) ? "on" : ""}" data-cid="${c.id}">👨‍👩‍👧‍👦 ${esc(c.name)}</button>`).join("");
+    return `<div class="blk"><h4>👥 Кто будет есть</h4>
+      <div class="eaters">
+        <button class="eater me on" disabled>🙂 Я</button>
+        ${fchips}${cchips}
+      </div>
+      <div class="r-sub" style="margin-top:8px">Тапни, для кого это блюдо — они увидят план и список покупок.</div>
+    </div>`;
+  }
 
   function render() {
     const n = r.nutrition_per_serving;
@@ -277,6 +300,8 @@ async function openDish(id) {
         <div class="tags">${tags}</div>
         ${warns}
 
+        ${eatersBlock()}
+
         <div class="serv-row">
           <span class="lbl">Порций</span>
           <div class="stepper">
@@ -317,6 +342,33 @@ async function openDish(id) {
     $("#servMinus").addEventListener("click", () => changeServ(-1));
     $("#servPlus").addEventListener("click", () => changeServ(1));
     $("#addCart").addEventListener("click", addToCart);
+
+    // выбор едоков (без полного ре-рендера — не сбрасываем скролл)
+    const refreshClanChips = () => {
+      inner.querySelectorAll(".eater[data-cid]").forEach((cb) => {
+        const c = (clans || []).find((x) => String(x.id) === cb.dataset.cid);
+        cb.classList.toggle("on", c ? clanOn(c) : false);
+      });
+    };
+    inner.querySelectorAll(".eater[data-fid]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const fid = parseInt(b.dataset.fid, 10);
+        if (eaters.has(fid)) eaters.delete(fid); else eaters.add(fid);
+        b.classList.toggle("on", eaters.has(fid));
+        refreshClanChips(); haptic();
+      }));
+    inner.querySelectorAll(".eater[data-cid]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const c = (clans || []).find((x) => String(x.id) === b.dataset.cid);
+        if (!c) return;
+        const on = clanOn(c);
+        c.member_ids.forEach((id) => { if (on) eaters.delete(id); else eaters.add(id); });
+        c.member_ids.forEach((id) => {
+          const fb = inner.querySelector(`.eater[data-fid="${id}"]`);
+          if (fb) fb.classList.toggle("on", eaters.has(id));
+        });
+        b.classList.toggle("on", !on); haptic();
+      }));
   }
 
   async function changeServ(d) {
@@ -329,11 +381,16 @@ async function openDish(id) {
   async function addToCart() {
     await api("/cart/items", {
       method: "POST",
-      body: JSON.stringify({ recipe_id: r.id, servings: r.selected_servings }),
+      body: JSON.stringify({
+        recipe_id: r.id,
+        servings: r.selected_servings,
+        eaters: Array.from(eaters),
+      }),
     });
     await refreshCartCount();
     haptic("medium");
-    toast("Добавлено в план 🛒");
+    const n = eaters.size;
+    toast(n ? `Добавлено · для вас +${n} 🛒` : "Добавлено в план 🛒");
     closeSheet();
   }
 
@@ -392,7 +449,8 @@ async function renderCart() {
     <div class="list-row" data-id="${r.id}">
       <div class="r-top">
         <div><div class="r-name">${r.emoji} ${esc(r.name)}</div>
-        <div class="r-sub">⏱ ${r.total_time} мин · 🔥 ${r.per_serving.kcal} ккал/порц</div></div>
+        <div class="r-sub">⏱ ${r.total_time} мин · 🔥 ${r.per_serving.kcal} ккал/порц</div>
+        ${r.eater_names && r.eater_names.length ? `<div class="r-sub" style="color:var(--accent);font-weight:600">👥 для: я, ${r.eater_names.map(esc).join(", ")}</div>` : ""}</div>
       </div>
       <div class="r-actions">
         <div class="stepper">
@@ -594,6 +652,8 @@ async function openOrder(id) {
   const o = await api(`/orders/${id}`);
   renderOrderSheet(id, o, false);
   if (_orderPoll) clearInterval(_orderPoll);
+  // синхрон нужен только для общих планов (есть участники) — экономим нагрузку
+  if (!o.participants || !o.participants.length) return;
   let sig = orderSig(o);
   _orderPoll = setInterval(async () => {
     if ($("#sheet").classList.contains("hidden")) { clearInterval(_orderPoll); _orderPoll = null; return; }
@@ -602,7 +662,7 @@ async function openOrder(id) {
       const ns = orderSig(fresh);
       if (ns !== sig) { sig = ns; renderOrderSheet(id, fresh, true); }
     } catch (e) {}
-  }, 4000);
+  }, 6000);
 }
 
 function renderOrderSheet(id, o, keepScroll) {
@@ -750,7 +810,7 @@ function glucoseCardHTML(data) {
       </div>${glucoseSpark(data.entries)}<div class="gl-list">${rows}</div>`
     : `<div class="r-sub" style="margin-top:8px">Записывай сахар до и после еды — увидишь свою динамику. Это личный дневник, не диагноз.</div>`;
   return `<div class="profile-card">
-    <div class="r-top"><h3>🩸 Дневник глюкозы</h3><button class="dice ghost" id="glAdd" title="Добавить замер">＋</button></div>
+    <div class="r-top"><h3>🩸 Дневник глюкозы</h3><button class="add-btn" id="glAdd" title="Добавить замер">＋</button></div>
     ${body}</div>`;
 }
 
@@ -789,6 +849,113 @@ function openGlucoseForm(recipeId, recipeName) {
   });
 }
 
+/* ---------- трекер кофеина ---------- */
+function caffeineCardHTML(data) {
+  const s = data.summary;
+  const pct = Math.min(100, Math.round((s.today_mg / s.limit) * 100));
+  const col = s.over ? "#c0442e" : pct > 75 ? "#c9683f" : "var(--accent)";
+  const rows = data.entries.slice(0, 8).map((e) => {
+    const d = new Date(e.created_at);
+    const when = d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + " " +
+      d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+    return `<div class="gl-row"><span class="gl-val" style="color:${col}">${e.mg}</span>
+      <div class="gl-mid"><div class="gl-kind">${e.source ? esc(e.source) : "Кофеин"}</div><div class="gl-when">${when}${e.note ? " · " + esc(e.note) : ""}</div></div>
+      <button class="gl-del" data-cafid="${e.id}" title="Удалить">✕</button></div>`;
+  }).join("");
+  const body = `
+    <div class="caf-meter"><div class="caf-fill" style="width:${pct}%;background:${col}"></div></div>
+    <div class="r-sub" style="margin-top:8px">Сегодня: <b style="color:${col}">${s.today_mg} мг</b> из ~${s.limit} мг${s.over ? " · ⚠️ выше ориентира" : ""}</div>
+    ${data.entries.length
+      ? `<div class="gl-list" style="margin-top:12px">${rows}</div>`
+      : `<div class="r-sub" style="margin-top:8px">Записывай кофе и чай — держи кофеин в норме (обычно до ~200 мг/сутки при беременности). Это дневник, не диагноз.</div>`}`;
+  return `<div class="profile-card">
+    <div class="r-top"><h3>☕ Кофеин сегодня</h3><button class="add-btn" id="cafAdd" title="Добавить">＋</button></div>
+    ${body}</div>`;
+}
+
+function openCaffeineForm(presets) {
+  const inner = $("#sheetInner");
+  const chips = (presets || []).map((p) =>
+    `<button class="chip caf-preset" data-mg="${p.mg}" data-src="${esc(p.source)}">${p.emoji} ${esc(p.source)} · ${p.mg}мг</button>`).join("");
+  inner.innerHTML = `<div class="detail-body">
+      <div class="r-top"><div class="detail-name">☕ Добавить кофеин</div><button class="sheet-close" id="closeSheet" style="position:static">✕</button></div>
+      <div class="r-sub" style="margin-bottom:8px">Быстрый выбор:</div>
+      <div class="chips">${chips}</div>
+      <div class="blk"><h4>Или вручную, мг</h4>
+        <input id="cafVal" class="note-input" type="number" step="1" min="1" max="1000" inputmode="numeric" placeholder="напр. 95" style="font-size:20px;font-weight:800;text-align:center"/></div>
+      <input id="cafSrc" class="note-input" placeholder="Источник (кофе, чай…)" style="margin-top:10px"/>
+    </div>
+    <div class="sticky-cta"><button class="btn btn-primary" id="cafSave">Сохранить</button></div>`;
+  $("#sheet").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  $("#closeSheet").addEventListener("click", closeSheet);
+  inner.querySelectorAll(".caf-preset").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await api("/caffeine", { method: "POST", body: JSON.stringify({ mg: parseFloat(b.dataset.mg), source: b.dataset.src }) });
+      haptic("medium"); toast(`+${b.dataset.mg} мг ☕`); closeSheet();
+      if (state.tab === "profile") renderProfile();
+    }));
+  $("#cafSave").addEventListener("click", async () => {
+    const mg = parseFloat(($("#cafVal").value || "").replace(",", "."));
+    if (!(mg >= 1 && mg <= 1000)) { toast("Введи 1–1000 мг"); return; }
+    await api("/caffeine", { method: "POST", body: JSON.stringify({ mg, source: $("#cafSrc").value.trim() || null }) });
+    haptic("medium"); toast("Сохранено ☕"); closeSheet();
+    if (state.tab === "profile") renderProfile();
+  });
+}
+
+/* ---------- кланы ---------- */
+function clansCardHTML(clans, friends) {
+  const hasFriends = friends && friends.length;
+  const list = (clans || []).map((c) => `
+    <div class="gl-row">
+      <span style="font-size:20px">👨‍👩‍👧‍👦</span>
+      <div class="gl-mid"><div class="gl-kind">${esc(c.name)}</div>
+        <div class="gl-when">${c.members.length ? c.members.map((m) => esc(m.name)).join(", ") : "нет участников"}</div></div>
+      <button class="gl-del clan-edit" data-cid="${c.id}" title="Изменить">✏️</button>
+      <button class="gl-del clan-del" data-cid="${c.id}" title="Удалить">✕</button>
+    </div>`).join("");
+  return `<div class="profile-card">
+    <h3>👨‍👩‍👧‍👦 Кланы</h3>
+    <div class="r-sub" style="margin-top:4px">Собери близких в группу — и тэгай всех разом при добавлении блюд.</div>
+    ${hasFriends
+      ? `<button class="btn btn-ghost" id="clanAdd" style="margin-top:12px;padding:11px">➕ Новый клан</button>`
+      : `<div class="r-sub" style="margin-top:10px;opacity:.7">Сначала добавь друзей — из них собираются кланы.</div>`}
+    ${clans && clans.length ? `<div class="gl-list" style="margin-top:12px">${list}</div>` : ""}
+  </div>`;
+}
+
+function openClanForm(clan, friends) {
+  const inner = $("#sheetInner");
+  const sel = new Set(clan ? clan.member_ids : []);
+  const chips = friends.map((f) =>
+    `<button class="eater ${sel.has(f.id) ? "on" : ""}" data-fid="${f.id}">${f.role === "wife" ? "👩" : f.role === "husband" ? "👨" : "🙂"} ${esc(f.name)}</button>`).join("");
+  inner.innerHTML = `<div class="detail-body">
+      <div class="r-top"><div class="detail-name">${clan ? "✏️ Клан" : "👨‍👩‍👧‍👦 Новый клан"}</div><button class="sheet-close" id="closeSheet" style="position:static">✕</button></div>
+      <input id="clanName" class="note-input" placeholder="Название (напр. Наша семья)" value="${clan ? esc(clan.name) : ""}" style="margin-bottom:12px"/>
+      <div class="blk"><h4>Кто в клане</h4><div class="eaters">${chips}</div></div>
+    </div>
+    <div class="sticky-cta"><button class="btn btn-primary" id="clanSave">${clan ? "Сохранить" : "Создать клан"}</button></div>`;
+  $("#sheet").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  $("#closeSheet").addEventListener("click", () => { closeSheet(); if (state.tab === "profile") renderProfile(); });
+  inner.querySelectorAll(".eater[data-fid]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const id = parseInt(b.dataset.fid, 10);
+      if (sel.has(id)) sel.delete(id); else sel.add(id);
+      b.classList.toggle("on", sel.has(id)); haptic();
+    }));
+  $("#clanSave").addEventListener("click", async () => {
+    const name = $("#clanName").value.trim();
+    if (!name) { toast("Введи название"); return; }
+    const payload = { name, member_ids: Array.from(sel) };
+    if (clan) await api(`/clans/${clan.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+    else await api("/clans", { method: "POST", body: JSON.stringify(payload) });
+    haptic("medium"); toast("Клан сохранён 👨‍👩‍👧‍👦"); closeSheet();
+    if (state.tab === "profile") renderProfile();
+  });
+}
+
 /* ---------- друзья / семья ---------- */
 function shareInvite(link) {
   const text = "Присоединяйся ко мне в Freely 🌿 — меню без глютена и с контролем сахара!";
@@ -824,12 +991,14 @@ async function renderProfile() {
   $("#searchWrap").classList.add("hidden");
   v.innerHTML = `<div class="loader">Загрузка…</div>`;
   const me = state.me || (await api("/me"));
-  const [disc, stats, gl, fr, dl] = await Promise.all([
+  const [disc, stats, gl, fr, dl, caf, clans] = await Promise.all([
     api("/disclaimer"),
     api("/stats").catch(() => null),
     api("/glucose").catch(() => null),
     api("/friends").catch(() => null),
     api("/dislikes").catch(() => ({ ingredients: [] })),
+    api("/caffeine").catch(() => null),
+    api("/clans").catch(() => []),
   ]);
   v.innerHTML = `
     <div class="profile-card">
@@ -839,9 +1008,11 @@ async function renderProfile() {
       <button class="btn btn-ghost" id="changeProfile" style="margin-top:14px;padding:11px">Изменить ситуацию</button>
     </div>
     ${fr ? friendsCardHTML(fr) : ""}
+    ${fr ? clansCardHTML(clans, fr.friends) : ""}
     ${dislikesCardHTML(dl)}
     ${stats ? statsHTML(stats) : ""}
     ${gl ? glucoseCardHTML(gl) : ""}
+    ${caf ? caffeineCardHTML(caf) : ""}
     <div class="profile-card">
       <h3>ℹ️ О Freely</h3>
       <div class="r-sub" style="line-height:1.5"><b>Freely 🌿</b> — вкусное питание без глютена и с контролем сахара: для будущих мам (ГСД), для целиакии и для всех, кто хочет питаться правильно. Выбирай блюда, собирай план, получай список покупок.</div>
@@ -874,6 +1045,27 @@ async function renderProfile() {
     }));
   const da = document.getElementById("dislikeAdd");
   if (da) da.addEventListener("click", () => openDislikePicker(dlIds));
+  // кофеин
+  const cafAdd = document.getElementById("cafAdd");
+  if (cafAdd) cafAdd.addEventListener("click", () => openCaffeineForm(caf && caf.presets));
+  v.querySelectorAll(".gl-del[data-cafid]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await api(`/caffeine/${b.dataset.cafid}`, { method: "DELETE" });
+      haptic(); renderProfile();
+    }));
+  // кланы
+  const clanAdd = document.getElementById("clanAdd");
+  if (clanAdd) clanAdd.addEventListener("click", () => openClanForm(null, fr.friends));
+  v.querySelectorAll(".clan-edit[data-cid]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const c = (clans || []).find((x) => String(x.id) === b.dataset.cid);
+      if (c) openClanForm(c, fr.friends);
+    }));
+  v.querySelectorAll(".clan-del[data-cid]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await api(`/clans/${b.dataset.cid}`, { method: "DELETE" });
+      haptic(); toast("Клан удалён"); renderProfile();
+    }));
 }
 
 function dislikesCardHTML(dl) {
@@ -949,6 +1141,16 @@ function switchTab(tab) {
   });
 }
 
+async function loadDailyQuote() {
+  const el = document.getElementById("dailyQuote");
+  if (!el) return;
+  try {
+    const q = await api("/quote");
+    el.textContent = "„" + q.text + "“";
+    el.classList.add("show");
+  } catch (e) { el.classList.add("hidden"); }
+}
+
 async function refreshCartCount() {
   try {
     const cart = await api("/cart");
@@ -978,6 +1180,7 @@ document.querySelectorAll("#bottomNav button").forEach((b) =>
     if (sub) sub.textContent = `Привет, ${state.me.first_name || "друг"}! 👋 · без глютена, контроль сахара`;
   } catch (e) {}
   state._images = await api("/images").catch(() => ({}));
+  loadDailyQuote();
   await refreshCartCount();
   switchTab("menu");
   const shownDisc = await maybeShowDisclaimer();

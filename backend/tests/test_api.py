@@ -87,6 +87,51 @@ def test_friends_can_access_each_others_orders(db):
     assert _can_access(db, order, stranger) is False # чужой не видит
 
 
+def test_quote_of_the_day(client):
+    q = client.get("/api/quote").json()
+    assert q["total"] == 100
+    assert isinstance(q["text"], str) and len(q["text"]) > 5
+
+
+def test_order_created_at_is_utc_marked(client):
+    recipes = client.get("/api/recipes").json()
+    client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 1})
+    order = client.post("/api/orders", json={}).json()
+    assert order["created_at"].endswith("Z")  # UTC → клиент покажет локально
+
+
+def test_caffeine_log_and_summary(client):
+    client.post("/api/caffeine", json={"mg": 95, "source": "Кофе"})
+    client.post("/api/caffeine", json={"mg": 47, "source": "Чай"})
+    data = client.get("/api/caffeine").json()
+    assert data["summary"]["today_mg"] == 142
+    assert data["summary"]["limit"] == 200
+    assert len(data["presets"]) >= 4
+    eid = data["entries"][0]["id"]
+    client.delete(f"/api/caffeine/{eid}")
+    assert client.get("/api/caffeine").json()["summary"]["count"] == 1
+
+
+def test_clan_create_ignores_non_friends(client):
+    clan = client.post("/api/clans", json={"name": "Семья", "member_ids": [999999]}).json()
+    assert clan["name"] == "Семья"
+    assert clan["member_ids"] == []  # 999999 не друг → не в клане
+    clans = client.get("/api/clans").json()
+    assert any(c["id"] == clan["id"] for c in clans)
+    client.delete(f"/api/clans/{clan['id']}")
+    assert client.get("/api/clans").json() == []
+
+
+def test_cart_eaters_validation(client):
+    recipes = client.get("/api/recipes").json()
+    # 999999 не друг → едок отбрасывается
+    cart = client.post(
+        "/api/cart/items",
+        json={"recipe_id": recipes[0]["id"], "servings": 1, "eaters": [999999]},
+    ).json()
+    assert cart["items"][0]["eaters"] == []
+
+
 def test_delete_order(client):
     recipes = client.get("/api/recipes").json()
     client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 1})

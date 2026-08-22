@@ -20,6 +20,7 @@ from ..models import (
 )
 from ..notifier import notify
 from ..nutrition import ShopLine, ShoppingList, build_shopping_list
+from ..timeutil import iso_utc
 
 router = APIRouter()
 
@@ -168,7 +169,7 @@ def _order_payload(db: Session, order: Order, with_list: bool = True) -> dict:
     parts = _participant_users(db, order)
     data = {
         "id": order.id,
-        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "created_at": iso_utc(order.created_at),
         "status": order.status,
         "status_label": STATUS_LABELS.get(order.status, order.status),
         "note": order.note,
@@ -202,6 +203,9 @@ def create_order(
     db.add(order)
     db.flush()
 
+    from .cart import parse_eaters  # локально, во избежание цикла
+
+    tagged: set[int] = set(body.friend_ids)
     for ci in cart:
         recipe = db.get(Recipe, ci.recipe_id)
         if recipe:
@@ -213,16 +217,13 @@ def create_order(
                     recipe_name=f"{recipe.emoji} {recipe.name}",
                 )
             )
+        tagged.update(parse_eaters(ci.eaters))  # едоки блюда → участники
         db.delete(ci)  # очищаем корзину
 
-    # тэгнутые друзья → участники (только реальные друзья автора)
-    if body.friend_ids:
-        friend_ids = set(
-            db.scalars(
-                select(Friendship.friend_id).where(Friendship.user_id == user.id)
-            ).all()
-        )
-        for fid in set(body.friend_ids):
+    # участники = едоки блюд ∪ тэгнутые; только реальные друзья автора
+    if tagged:
+        friend_ids = _friend_ids_of(db, user.id)
+        for fid in {t for t in tagged if t != user.id}:
             if fid in friend_ids:
                 db.add(OrderParticipant(order_id=order.id, user_id=fid))
 
