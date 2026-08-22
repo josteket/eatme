@@ -407,11 +407,12 @@ async function renderCart() {
   const fr = await api("/friends").catch(() => ({ friends: [] }));
   state._tagFriends = new Set();
   const tagBlock = fr.friends.length ? `
-    <div class="section-title" style="margin-top:16px">Для кого готовим?</div>
+    <div class="section-title" style="margin-top:16px">👥 Готовим вместе</div>
     <div class="chips" id="tagChips">
       <button class="chip active" data-me="1">🙂 Только я</button>
       ${fr.friends.map((f) => `<button class="chip" data-fid="${f.id}">${f.role === "wife" ? "👩" : f.role === "husband" ? "👨" : "🙂"} ${esc(f.name)}</button>`).join("")}
-    </div>` : "";
+    </div>
+    <div class="r-sub" style="margin-top:6px">👀 Друзья и так видят твои планы и список покупок. Тут отметь, кого позвать готовить — им придёт уведомление.</div>` : "";
 
   v.innerHTML = `
     <div class="section-title">🛒 План еды · ${cart.count} блюд</div>

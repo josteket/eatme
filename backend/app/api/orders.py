@@ -130,12 +130,33 @@ def _member_ids(db: Session, order: Order) -> set[int]:
     return ids
 
 
+def _friend_ids_of(db: Session, user_id: int) -> set[int]:
+    """id пользователей, с кем user_id дружит (связь двусторонняя)."""
+    return set(
+        db.scalars(
+            select(Friendship.friend_id).where(Friendship.user_id == user_id)
+        ).all()
+    )
+
+
 def _can_access(db: Session, order: Order, user: User) -> bool:
-    return user.id in _member_ids(db, order)
+    # автор, участник — или друг автора (друзья видят планы друг друга)
+    if user.id in _member_ids(db, order):
+        return True
+    return order.user_id in _friend_ids_of(db, user.id)
 
 
-def _member_telegram_ids(db: Session, order: Order, exclude_user_id: int | None = None) -> list[int]:
-    users = db.scalars(select(User).where(User.id.in_(_member_ids(db, order)))).all()
+def _audience_ids(db: Session, order: Order) -> set[int]:
+    """Кому вообще виден заказ: автор + участники + друзья автора."""
+    ids = _member_ids(db, order)
+    ids.update(_friend_ids_of(db, order.user_id))
+    return ids
+
+
+def _audience_telegram_ids(
+    db: Session, order: Order, exclude_user_id: int | None = None
+) -> list[int]:
+    users = db.scalars(select(User).where(User.id.in_(_audience_ids(db, order)))).all()
     return [u.telegram_id for u in users if u.id != exclude_user_id]
 
 
@@ -219,22 +240,29 @@ def _send_new_order_notification(db: Session, order: Order, author: User) -> Non
         lines.append(f"• {it.recipe_name} — {it.servings} порц.")
     lines.append("")
     lines.append("🛒 Список покупок готов — откройте приложение.")
-    # уведомляем участников (кроме автора)
-    targets = _member_telegram_ids(db, order, exclude_user_id=author.id)
+    # уведомляем друзей автора и тэгнутых участников (кроме автора)
+    targets = _audience_telegram_ids(db, order, exclude_user_id=author.id)
     if targets:
         notify(targets, "\n".join(lines))
 
 
 @router.get("/orders")
 def list_orders(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    # Мои заказы + заказы, где меня тэгнули; новые сверху
+    # Мои заказы + где меня тэгнули + планы друзей; новые сверху
     part_ids = db.scalars(
         select(OrderParticipant.order_id).where(OrderParticipant.user_id == user.id)
     ).all()
+    friend_ids = _friend_ids_of(db, user.id)
     stmt = (
         select(Order)
         .options(selectinload(Order.items), selectinload(Order.user))
-        .where(or_(Order.user_id == user.id, Order.id.in_(part_ids)))
+        .where(
+            or_(
+                Order.user_id == user.id,
+                Order.user_id.in_(friend_ids),
+                Order.id.in_(part_ids),
+            )
+        )
         .order_by(Order.created_at.desc())
     )
     orders = db.scalars(stmt).all()
@@ -313,7 +341,7 @@ def update_status(
     db.commit()
     db.refresh(order)
 
-    targets = _member_telegram_ids(db, order, exclude_user_id=user.id)
+    targets = _audience_telegram_ids(db, order, exclude_user_id=user.id)
     if targets:
         notify(
             targets,

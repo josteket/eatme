@@ -62,6 +62,31 @@ def test_cart_and_order_flow(client):
     assert client.get("/api/cart").json()["count"] == 0
 
 
+def test_friends_can_access_each_others_orders(db):
+    """Друзья видят планы друг друга; чужой — нет."""
+    from app.api.orders import _can_access, _friend_ids_of
+    from app.models import Friendship, Order, User
+
+    husband = User(telegram_id=111, first_name="Муж", role="husband")
+    wife = User(telegram_id=222, first_name="Жена", role="wife")
+    stranger = User(telegram_id=333, first_name="Чужой", role="user")
+    db.add_all([husband, wife, stranger])
+    db.flush()
+    # двусторонняя дружба муж<->жена
+    db.add_all([
+        Friendship(user_id=husband.id, friend_id=wife.id),
+        Friendship(user_id=wife.id, friend_id=husband.id),
+    ])
+    order = Order(user_id=husband.id, status="buy")
+    db.add(order)
+    db.commit()
+
+    assert _friend_ids_of(db, wife.id) == {husband.id}
+    assert _can_access(db, order, wife) is True      # жена — друг автора
+    assert _can_access(db, order, husband) is True   # автор
+    assert _can_access(db, order, stranger) is False # чужой не видит
+
+
 def test_order_tagging_ignores_non_friends(client):
     recipes = client.get("/api/recipes").json()
     client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 1})
