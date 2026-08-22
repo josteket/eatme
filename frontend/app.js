@@ -590,6 +590,7 @@ function orderSig(o) {
 }
 
 async function openOrder(id) {
+  if (!state.me) { try { state.me = await api("/me"); } catch (e) {} }
   const o = await api(`/orders/${id}`);
   renderOrderSheet(id, o, false);
   if (_orderPoll) clearInterval(_orderPoll);
@@ -632,6 +633,7 @@ function renderOrderSheet(id, o, keepScroll) {
       ${cookBanner}
       <div class="shop-group-title" style="margin-top:18px">🧾 Список покупок ${boughtLine}</div>
       <div id="shopList">${shoppingListHTML(sl)}</div>
+      ${o.author_id === (state.me && state.me.id) ? `<button class="btn btn-danger" id="delOrder" style="margin-top:18px">🗑 Удалить план</button>` : ""}
     </div>
     <div class="sticky-cta"><button class="btn btn-ghost" id="repeatOrder">🔁 Повторить (в корзину)</button></div>`;
   $("#sheet").classList.remove("hidden");
@@ -654,6 +656,16 @@ function renderOrderSheet(id, o, keepScroll) {
     await refreshCartCount();
     toast(`Добавлено ${res.added} блюд в план 🛒`);
     closeSheet(); switchTab("cart");
+  });
+  const del = document.getElementById("delOrder");
+  if (del) del.addEventListener("click", () => {
+    const go = async () => {
+      await api(`/orders/${id}`, { method: "DELETE" });
+      haptic("medium"); toast("План удалён 🗑");
+      closeSheet(); switchTab("orders");
+    };
+    if (tg) tg.showConfirm("Удалить этот план? Отменить нельзя.", (ok) => { if (ok) go(); });
+    else go();
   });
   if (keepScroll) inner.scrollTop = savedScroll;
 }
@@ -812,11 +824,12 @@ async function renderProfile() {
   $("#searchWrap").classList.add("hidden");
   v.innerHTML = `<div class="loader">Загрузка…</div>`;
   const me = state.me || (await api("/me"));
-  const [disc, stats, gl, fr] = await Promise.all([
+  const [disc, stats, gl, fr, dl] = await Promise.all([
     api("/disclaimer"),
     api("/stats").catch(() => null),
     api("/glucose").catch(() => null),
     api("/friends").catch(() => null),
+    api("/dislikes").catch(() => ({ ingredients: [] })),
   ]);
   v.innerHTML = `
     <div class="profile-card">
@@ -826,6 +839,7 @@ async function renderProfile() {
       <button class="btn btn-ghost" id="changeProfile" style="margin-top:14px;padding:11px">Изменить ситуацию</button>
     </div>
     ${fr ? friendsCardHTML(fr) : ""}
+    ${dislikesCardHTML(dl)}
     ${stats ? statsHTML(stats) : ""}
     ${gl ? glucoseCardHTML(gl) : ""}
     <div class="profile-card">
@@ -849,6 +863,65 @@ async function renderProfile() {
       await api(`/friends/${b.dataset.fid}`, { method: "DELETE" });
       haptic(); renderProfile();
     }));
+  // «Не люблю»
+  const dlIds = dl && dl.ingredients ? dl.ingredients.map((i) => i.id) : [];
+  v.querySelectorAll(".dl-chip[data-did]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const rid = parseInt(b.dataset.did, 10);
+      await api("/dislikes", { method: "PUT", body: JSON.stringify({ ids: dlIds.filter((x) => x !== rid) }) });
+      state._cats = null; haptic(); toast("Вернули в меню");
+      renderProfile();
+    }));
+  const da = document.getElementById("dislikeAdd");
+  if (da) da.addEventListener("click", () => openDislikePicker(dlIds));
+}
+
+function dislikesCardHTML(dl) {
+  const items = (dl && dl.ingredients) || [];
+  const chips = items.length
+    ? `<div class="chips">${items.map((i) => `<button class="chip active dl-chip" data-did="${i.id}">${esc(i.name)} ✕</button>`).join("")}</div>`
+    : `<div class="r-sub">Пока ничего. Добавь продукты, которые не любишь — блюда с ними исчезнут из меню.</div>`;
+  return `<div class="profile-card">
+    <h3>🚫 Не люблю</h3>
+    <div class="r-sub" style="margin-bottom:10px">Блюда с этими продуктами не показываем в меню.</div>
+    ${chips}
+    <button class="btn btn-ghost" id="dislikeAdd" style="margin-top:12px;padding:11px">➕ Добавить продукт</button>
+  </div>`;
+}
+
+async function openDislikePicker(currentIds) {
+  const inner = $("#sheetInner");
+  inner.innerHTML = `<div class="detail-body">
+      <div class="r-top"><div class="detail-name">🚫 Не люблю</div><button class="sheet-close" id="closeSheet" style="position:static">✕</button></div>
+      <div class="r-sub" style="margin-bottom:8px">Найди продукт и нажми — блюда с ним пропадут из меню.</div>
+      <input class="note-input" id="dlSearch" placeholder="Поиск продукта… (напр. грибы)" style="margin:2px 0 12px" />
+      <div id="dlResults"><div class="r-sub">Начни вводить название…</div></div>
+    </div>`;
+  $("#sheet").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  $("#closeSheet").addEventListener("click", () => { closeSheet(); if (state.tab === "profile") renderProfile(); });
+  const cur = new Set(currentIds);
+  const input = $("#dlSearch");
+  const res = $("#dlResults");
+  let t = null;
+  const run = async () => {
+    const q = input.value.trim();
+    const list = await api("/ingredients" + (q ? "?q=" + encodeURIComponent(q) : "")).catch(() => []);
+    if (!list.length) { res.innerHTML = `<div class="r-sub">Ничего не найдено.</div>`; return; }
+    res.innerHTML = list.map((i) =>
+      `<button class="list-row tappable dl-pick" data-id="${i.id}" data-name="${esc(i.name)}" style="width:100%;text-align:left">${cur.has(i.id) ? "✅ " : "➕ "}${esc(i.name)}</button>`).join("");
+    res.querySelectorAll(".dl-pick").forEach((b) =>
+      b.addEventListener("click", async () => {
+        const id = parseInt(b.dataset.id, 10);
+        if (cur.has(id)) return;
+        cur.add(id);
+        await api("/dislikes", { method: "PUT", body: JSON.stringify({ ids: Array.from(cur) }) });
+        state._cats = null; haptic();
+        toast(`«${b.dataset.name}» — больше не покажем`);
+        b.textContent = "✅ " + b.dataset.name;
+      }));
+  };
+  input.addEventListener("input", () => { clearTimeout(t); t = setTimeout(run, 250); });
 }
 
 /* ---------- RANDOM ("что поесть") ---------- */

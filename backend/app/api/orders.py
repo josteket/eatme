@@ -285,6 +285,25 @@ def get_order(
     return _order_payload(db, order)
 
 
+@router.delete("/orders/{order_id}")
+def delete_order(
+    order_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)
+):
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Заказ не найден")
+    if order.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Удалить план может только автор")
+    # участников чистим явно (портируемо между SQLite и Postgres), items — каскадом ORM
+    for p in db.scalars(
+        select(OrderParticipant).where(OrderParticipant.order_id == order.id)
+    ).all():
+        db.delete(p)
+    db.delete(order)
+    db.commit()
+    return {"ok": True}
+
+
 class CheckUpdate(BaseModel):
     key: str
     checked: bool

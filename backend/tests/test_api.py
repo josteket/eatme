@@ -87,6 +87,27 @@ def test_friends_can_access_each_others_orders(db):
     assert _can_access(db, order, stranger) is False # чужой не видит
 
 
+def test_delete_order(client):
+    recipes = client.get("/api/recipes").json()
+    client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 1})
+    oid = client.post("/api/orders", json={}).json()["id"]
+    assert client.delete(f"/api/orders/{oid}").status_code == 200
+    assert client.get(f"/api/orders/{oid}").status_code == 404
+
+
+def test_dislike_hides_recipe_from_menu(client):
+    ings = client.get("/api/ingredients", params={"q": "Ягоды"}).json()
+    assert ings, "ингредиент 'Ягоды' должен быть в сиде"
+    berry_id = ings[0]["id"]
+    before = client.get("/api/recipes").json()
+    assert any(r["name"] == "Ягоды" for r in before)
+    client.put("/api/dislikes", json={"ids": [berry_id]})
+    after = client.get("/api/recipes").json()
+    assert all(r["name"] != "Ягоды" for r in after)
+    saved = client.get("/api/dislikes").json()
+    assert [i["id"] for i in saved["ingredients"]] == [berry_id]
+
+
 def test_order_tagging_ignores_non_friends(client):
     recipes = client.get("/api/recipes").json()
     client.post("/api/cart/items", json={"recipe_id": recipes[0]["id"], "servings": 1})

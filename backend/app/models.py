@@ -37,6 +37,8 @@ class User(Base):
     profile_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
     # персональный код-приглашение для друзей
     invite_code: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    # «не люблю»: JSON-список id ингредиентов — исключаются из меню
+    disliked: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

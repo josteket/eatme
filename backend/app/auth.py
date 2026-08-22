@@ -114,3 +114,18 @@ def current_user(
 
     log.warning("Auth: ОТКАЗ — нет валидного initData и DEV_MODE выключен")
     raise HTTPException(status_code=401, detail="Откройте приложение через Telegram")
+
+
+def optional_user(
+    x_telegram_init_data: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Как current_user, но без исключения: None, если авторизация не прошла.
+
+    Нужно для публичных эндпоинтов (меню), где хотим лишь персонализировать
+    выдачу, но не блокировать неавторизованных.
+    """
+    try:
+        return current_user(x_telegram_init_data, db)
+    except HTTPException:
+        return None

@@ -187,6 +187,14 @@ def random_dish(
     if gdm:
         stmt = stmt.where(Recipe.gdm_suitable == gdm)
     recipes = db.scalars(stmt).all()
+    from .dislikes import disliked_ids
+
+    excl = disliked_ids(user)
+    if excl:
+        recipes = [
+            r for r in recipes
+            if not any(ri.ingredient_id in excl for ri in r.ingredients)
+        ]
     briefs = [recipe_brief(r) for r in recipes]
     if quick:
         briefs = [b for b in briefs if b["total_time"] <= 20]

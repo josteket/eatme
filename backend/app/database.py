@@ -70,7 +70,11 @@ def _ensure_columns() -> None:
     """Лёгкая миграция: добавить недостающие колонки (SQLite и Postgres)."""
     wanted = {
         "orders": [("checked_items", "TEXT DEFAULT ''")],
-        "users": [("profile_type", "VARCHAR(24)"), ("invite_code", "VARCHAR(16)")],
+        "users": [
+            ("profile_type", "VARCHAR(24)"),
+            ("invite_code", "VARCHAR(16)"),
+            ("disliked", "TEXT"),
+        ],
     }
     with engine.begin() as conn:
         for table, cols in wanted.items():

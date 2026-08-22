@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import get_db
 from ..models import Favorite, Recipe
 from ..serializers import CATEGORY_LABELS, recipe_brief, recipe_full
-from ..auth import current_user
+from ..auth import current_user, optional_user
 from ..models import User
+from .dislikes import disliked_ids
 
 router = APIRouter()
 
@@ -46,6 +47,7 @@ def list_recipes(
     gdm: str | None = Query(default=None, description="yes|moderate — фильтр по нагрузке"),
     quick: bool = False,
     db: Session = Depends(get_db),
+    user: User | None = Depends(optional_user),
 ):
     # STRICT_GF_GDM: в меню попадают только безопасные для целиакии блюда
     stmt = _load(db).where(Recipe.celiac_safe == True)  # noqa: E712
@@ -71,6 +73,14 @@ def list_recipes(
     if tag:
         tl = tag.lower()
         recipes = [r for r in recipes if tl in (r.tags or "").lower()]
+
+    # «Не люблю»: убираем блюда с нелюбимыми ингредиентами
+    excl = disliked_ids(user)
+    if excl:
+        recipes = [
+            r for r in recipes
+            if not any(ri.ingredient_id in excl for ri in r.ingredients)
+        ]
 
     result = [recipe_brief(r) for r in recipes]
     if quick:
