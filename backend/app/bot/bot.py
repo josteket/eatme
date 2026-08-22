@@ -7,7 +7,7 @@ import socket
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     BotCommand,
     InlineKeyboardButton,
@@ -21,6 +21,34 @@ from aiogram.types import (
 from ..config import settings
 
 log = logging.getLogger("eatme.bot")
+
+
+def _handle_invite(tg_user, code: str) -> str:
+    """Связать открывшего ссылку с пригласившим. Возвращает приветственную приписку."""
+    from sqlalchemy import select
+
+    from ..auth import _get_or_create_user
+    from ..api.friends import make_friends
+    from ..database import SessionLocal
+    from ..models import User
+
+    db = SessionLocal()
+    try:
+        inviter = db.scalar(select(User).where(User.invite_code == code.strip()))
+        if not inviter:
+            return ""
+        me = _get_or_create_user(db, tg_user.id, tg_user.username, tg_user.first_name)
+        if me.id == inviter.id:
+            return ""
+        make_friends(db, me.id, inviter.id)
+        iname = inviter.first_name or inviter.username or "друг"
+        log.info("Дружба: %s ↔ %s", me.id, inviter.id)
+        return f"🎉 Теперь вы с <b>{iname}</b> готовите вместе!\n\n"
+    except Exception as e:  # noqa: BLE001
+        log.warning("Ошибка приглашения: %s", e)
+        return ""
+    finally:
+        db.close()
 
 
 def _make_session() -> AiohttpSession:
@@ -107,22 +135,19 @@ def build_bot() -> tuple[Bot, Dispatcher]:
             )
 
     @dp.message(Command("start"))
-    async def start(message: Message) -> None:
+    async def start(message: Message, command: CommandObject) -> None:
         uid = message.from_user.id
         uname = message.from_user.first_name
-        log.info("Бот: /start от id=%s (%s)", uid, uname)
-        if not settings.is_allowed(uid):
-            log.warning("Бот: /start ОТКАЗ — id=%s не в ALLOWED_TELEGRAM_IDS", uid)
-            await message.answer(
-                "Это семейное приложение. Твой Telegram ID не в списке.\n"
-                f"ID: <code>{uid}</code> — добавь его в .env (ALLOWED_TELEGRAM_IDS).",
-                parse_mode="HTML",
-            )
-            return
+        payload = (command.args or "").strip()
+        log.info("Бот: /start от id=%s (%s) payload=%r", uid, uname, payload)
+        friend_note = ""
+        if payload.startswith("inv_"):
+            friend_note = _handle_invite(message.from_user, payload[4:])
         name = uname or "друг"
         await _send_menu(
             message,
-            f"👋 Привет, {name}!\n\n"
+            friend_note
+            + f"👋 Привет, {name}!\n\n"
             "Это <b>Freely</b> 🌿 — вкусное питание без глютена и с контролем сахара.\n"
             "Выбирай блюда → собирай план → получай список покупок.",
         )

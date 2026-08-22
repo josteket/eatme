@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     )
 
     BOT_TOKEN: str = ""
+    BOT_USERNAME: str = "eatmes_bot"
     WEBAPP_URL: str = "https://localhost"
     ALLOWED_TELEGRAM_IDS: str = ""
     WIFE_TELEGRAM_ID: str = ""

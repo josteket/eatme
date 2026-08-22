@@ -35,6 +35,19 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16), default="user")  # wife | husband | user
     # ситуация пользователя: pregnant | gdm | celiac | healthy
     profile_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    # персональный код-приглашение для друзей
+    invite_code: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class Friendship(Base):
+    """Дружба (храним обе стороны отдельными строками для простых запросов)."""
+    __tablename__ = "friendships"
+    __table_args__ = (UniqueConstraint("user_id", "friend_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    friend_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 

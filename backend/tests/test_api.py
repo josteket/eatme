@@ -163,6 +163,18 @@ def test_likes_toggle_and_popular(client):
     assert r2["liked"] is False and r2["likes"] == 0
 
 
+def test_friends_invite(client):
+    data = client.get("/api/friends").json()
+    assert data["invite_code"]
+    assert "t.me" in data["invite_link"]
+    assert data["friends"] == []
+    # свой код добавить нельзя
+    assert client.post("/api/friends/accept",
+                       json={"code": data["invite_code"]}).status_code == 400
+    # неизвестный код
+    assert client.post("/api/friends/accept", json={"code": "zzzzzz"}).status_code == 404
+
+
 def test_glucose_diary(client):
     recipes = client.get("/api/recipes").json()
     rid = recipes[0]["id"]

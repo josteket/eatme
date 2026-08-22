@@ -226,7 +226,7 @@ async function openDish(id) {
   sheet.classList.remove("hidden");
   document.body.style.overflow = "hidden";
 
-  let servings = 2;
+  let servings = 1;
   let r = await api(`/recipes/${id}?servings=${servings}`);
 
   function render() {
@@ -709,15 +709,46 @@ function openGlucoseForm(recipeId, recipeName) {
   });
 }
 
+/* ---------- друзья / семья ---------- */
+function shareInvite(link) {
+  const text = "Присоединяйся ко мне в Freely 🌿 — меню без глютена и с контролем сахара!";
+  try {
+    if (tg && tg.openTelegramLink) {
+      tg.openTelegramLink("https://t.me/share/url?url=" + encodeURIComponent(link) + "&text=" + encodeURIComponent(text));
+      return;
+    }
+  } catch (e) {}
+  try { navigator.clipboard.writeText(link); toast("Ссылка скопирована 🔗"); }
+  catch (e) { toast(link); }
+}
+
+function friendsCardHTML(data) {
+  const list = data.friends.map((f) => {
+    const ava = f.role === "wife" ? "👩" : f.role === "husband" ? "👨" : "🙂";
+    return `<div class="gl-row"><span style="font-size:22px">${ava}</span>
+      <div class="gl-mid"><div class="gl-kind">${esc(f.name)}</div></div>
+      <button class="gl-del" data-fid="${f.id}" title="Удалить из друзей">✕</button></div>`;
+  }).join("");
+  return `<div class="profile-card">
+    <h3>👥 Друзья и семья</h3>
+    <div class="r-sub" style="margin-top:4px">Пригласи жену или друга — сможете вместе собирать план и делить список покупок.</div>
+    <button class="btn btn-primary" id="inviteBtn" style="margin-top:14px">🔗 Пригласить по ссылке</button>
+    ${data.friends.length
+      ? `<div class="gl-list" style="margin-top:14px">${list}</div>`
+      : `<div class="r-sub" style="margin-top:14px;text-align:center;opacity:.7">Пока никого нет</div>`}
+  </div>`;
+}
+
 async function renderProfile() {
   const v = view();
   $("#searchWrap").classList.add("hidden");
   v.innerHTML = `<div class="loader">Загрузка…</div>`;
   const me = state.me || (await api("/me"));
-  const [disc, stats, gl] = await Promise.all([
+  const [disc, stats, gl, fr] = await Promise.all([
     api("/disclaimer"),
     api("/stats").catch(() => null),
     api("/glucose").catch(() => null),
+    api("/friends").catch(() => null),
   ]);
   v.innerHTML = `
     <div class="profile-card">
@@ -726,6 +757,7 @@ async function renderProfile() {
       <div class="r-sub" style="margin-top:8px">Все блюда — без глютена и с контролем углеводов</div>
       <button class="btn btn-ghost" id="changeProfile" style="margin-top:14px;padding:11px">Изменить ситуацию</button>
     </div>
+    ${fr ? friendsCardHTML(fr) : ""}
     ${stats ? statsHTML(stats) : ""}
     ${gl ? glucoseCardHTML(gl) : ""}
     <div class="profile-card">
@@ -737,9 +769,16 @@ async function renderProfile() {
   if (cp) cp.addEventListener("click", () => showProfilePicker(true));
   const glAdd = document.getElementById("glAdd");
   if (glAdd) glAdd.addEventListener("click", () => openGlucoseForm(null, null));
-  v.querySelectorAll(".gl-del").forEach((b) =>
+  v.querySelectorAll(".gl-del[data-id]").forEach((b) =>
     b.addEventListener("click", async () => {
       await api(`/glucose/${b.dataset.id}`, { method: "DELETE" });
+      haptic(); renderProfile();
+    }));
+  const inv = document.getElementById("inviteBtn");
+  if (inv && fr) inv.addEventListener("click", () => shareInvite(fr.invite_link));
+  v.querySelectorAll(".gl-del[data-fid]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      await api(`/friends/${b.dataset.fid}`, { method: "DELETE" });
       haptic(); renderProfile();
     }));
 }
